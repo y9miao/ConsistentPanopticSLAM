@@ -1,0 +1,38 @@
+{
+  "configurations": [
+    {
+      "browse": {
+        "databaseFilename": "${default}",
+        "limitSymbolsToIncludedHeaders": false
+      },
+      "includePath": [
+        "/opt/ros/noetic/include/**",
+        "/home/yang/toolbox/voxbloxpp_ws/devel/include/**",
+        "/home/yang/toolbox/voxbloxpp_ws/src/depth_segmentation/depth_segmentation/include/**",
+        "/home/yang/toolbox/voxbloxpp_ws/src/depth_segmentation_py/include/**",
+        "/home/yang/toolbox/voxbloxpp_ws/src/eigen_checks/include/**",
+        "/home/yang/toolbox/voxbloxpp_ws/src/voxblox-plusplus/global_segment_map/include/**",
+        "/home/yang/toolbox/voxbloxpp_ws/src/voxblox-plusplus/global_segment_map_node/include/**",
+        "/home/yang/toolbox/voxbloxpp_ws/src/global_segment_map_py/include/**",
+        "/home/yang/toolbox/voxbloxpp_ws/src/minkindr/minkindr/include/**",
+        "/home/yang/toolbox/voxbloxpp_ws/src/minkindr_ros/minkindr_conversions/include/**",
+        "/home/yang/toolbox/voxbloxpp_ws/src/pcl_catkin/perception_pcl/pcl_conversions/include/**",
+        "/home/yang/toolbox/voxbloxpp_ws/src/pcl_catkin/perception_pcl/pcl_ros/include/**",
+        "/home/yang/toolbox/voxbloxpp_ws/src/pcl_catkin/geometry2/tf2/include/**",
+        "/home/yang/toolbox/voxbloxpp_ws/src/pcl_catkin/geometry2/tf2_eigen/include/**",
+        "/home/yang/toolbox/voxbloxpp_ws/src/pcl_catkin/geometry2/tf2_msgs/include/**",
+        "/home/yang/toolbox/voxbloxpp_ws/src/pcl_catkin/geometry2/tf2_ros/include/**",
+        "/home/yang/toolbox/voxbloxpp_ws/src/voxblox-plusplus/voxblox/voxblox/include/**",
+        "/home/yang/toolbox/voxbloxpp_ws/src/voxblox-plusplus/voxblox/voxblox_ros/include/**",
+        "/home/yang/toolbox/voxbloxpp_ws/src/voxblox-plusplus/voxblox/voxblox_rviz_plugin/include/**",
+        "/usr/include/**"
+      ],
+      "name": "ROS",
+      "intelliSenseMode": "gcc-x64",
+      "compilerPath": "/usr/bin/gcc",
+      "cStandard": "gnu11",
+      "cppStandard": "c++14"
+    }
+  ],
+  "version": 4
+}

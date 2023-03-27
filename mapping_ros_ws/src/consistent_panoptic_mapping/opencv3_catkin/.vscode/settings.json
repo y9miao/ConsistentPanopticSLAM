@@ -1,0 +1,9 @@
+{
+    "python.autoComplete.extraPaths": [
+        "/home/yang/toolbox/voxbloxpp_ws/devel/lib/python3/dist-packages",
+        "/opt/ros/noetic/lib/python3/dist-packages",
+        "/home/yang/toolbox/voxbloxpp_ws/devel/lib",
+        "/home/yang/toolbox/scripts",
+        "/home/yang/toolbox/evaluation"
+    ]
+}
