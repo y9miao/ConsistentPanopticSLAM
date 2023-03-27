@@ -1,0 +1,12 @@
+# ros
+**/devel
+**/logs
+**/build
+**/bin
+**/lib
+
+# vscode
+**/.vscode
+
+# python
+**/__pycache__
