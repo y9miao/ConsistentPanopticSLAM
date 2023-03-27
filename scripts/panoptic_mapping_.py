@@ -73,7 +73,7 @@ def ResultsDirectories(result_folder):
     return result_dirs
 
 def main():
-    import gsm_py
+    import consistent_gsm
     import depth_segmentation_py
 
     # set files path
@@ -124,7 +124,7 @@ def main():
 
     # initialized integrator
     log_file = os.path.abspath(result_dirs['log'])
-    gsm_node = gsm_py.GlobalSegmentMap_py(log_file,task, use_geo_confidence,use_label_confidence,
+    gsm_node = consistent_gsm.GlobalSegmentMap_py(log_file,task, use_geo_confidence,use_label_confidence,
         inst_association, data_association, num_threads, args.debug, seg_graph_confidence, 
         use_inst_label_connect==1, connection_ratio_th)
     gsm_node.outputLog(log_info)

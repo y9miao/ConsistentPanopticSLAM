@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 2.8.3)
-project(gsm_py)
+project(consistent_gsm)
 
 add_definitions(-std=c++14)
 

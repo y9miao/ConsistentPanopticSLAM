@@ -1,6 +1,6 @@
 <?xml version="0.0.1"?>
 <package format="2">
-  <name>gsm_py</name>
+  <name>consistent_gsm</name>
   <version>0.0.1</version>
   <description>A package for global segmentation and mapping.</description>
 

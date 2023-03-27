@@ -546,8 +546,8 @@ void GlobalSegmentMap_py::outputLog(std::string log_info)
   LOG(INFO) << log_info;
 }
 
-PYBIND11_MODULE(gsm_py, m) {
-    m.doc() = "pybind11 for global segmentation map"; // optional module docstring
+PYBIND11_MODULE(consistent_gsm, m) {
+    m.doc() = "pybind11 for consistent global segmentation map"; // optional module docstring
     
     pybind11::class_<GlobalSegmentMap_py>(m, "GlobalSegmentMap_py")
         .def(pybind11::init<std::string, std::string, bool, bool, int, int, int, bool, int, bool, float>())
