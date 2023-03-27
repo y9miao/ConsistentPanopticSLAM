@@ -9,7 +9,6 @@ import cv2
 import numpy as np
 from scipy.spatial.transform import Rotation as R
 
-sys.path.insert(0, "/home/yang/toolbox/scripts")
 import panoptic_mapping.utils.semantics.semantic_utils as semantic_utils
 from panoptic_mapping.utils.common import *
 

@@ -105,11 +105,6 @@ class PerceptionNode(object):
                 # fontColor,thickness,lineType)
             name = cate_id_info[category]['name'].split('-')[0]
             
-            if "table" in name:
-                name = "table"
-            if  name == "table" and not pass_mergeed_table:
-                mergeed_table = True
-                continue
             color_image = cv2.putText(color_image, name.capitalize(),
                 bottomLeftCornerOfText, font, fontScale,
                 fontColor,thickness,lineType)
@@ -125,9 +120,6 @@ class PerceptionNode(object):
             #     bottomLeftCornerOfText, font, fontScale,
             #     fontColor,thickness,lineType)
             name = cate_id_info[category+20]['name'].split('-')[0]
-            if name == "floor":
-                x_center = 460
-                y_center = 400
             bottomLeftCornerOfText = (int(y_center), int(x_center))
             color_image = cv2.putText(color_image, name.capitalize(),
                 bottomLeftCornerOfText, font, fontScale,
