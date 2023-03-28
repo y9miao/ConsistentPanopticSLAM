@@ -1,3 +1,0 @@
-[submodule "mapping_ros_ws/src/voxblox"]
-	path = mapping_ros_ws/src/voxblox
-	url = https://github.com/ethz-asl/voxblox
