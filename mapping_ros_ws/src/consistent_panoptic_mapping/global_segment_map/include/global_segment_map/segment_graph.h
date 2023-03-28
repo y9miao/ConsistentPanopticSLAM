@@ -4,6 +4,7 @@
 #include <queue>
 #include <memory>
 #include <fstream>
+#include <iomanip>
 #include "global_segment_map/common.h"
 
 namespace voxblox
