@@ -34,5 +34,8 @@
 - git:
     local-name: vpp_msgs
     uri: https://github.com/ethz-asl/vpp_msgs.git
+- git:
+    local-name: protobuf_catkin
+    uri: https://github.com/ethz-asl/protobuf_catkin
 
 
