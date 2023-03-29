@@ -17,7 +17,7 @@ The main difference against **Voxblox++** is:
 ## Getting started
 - [Installing on Ubuntu](https://github.com/y9miao/volumetric-semantically-consistent-3D-panoptic-mapping/wiki/Installation)
 - [Datasets](https://github.com/y9miao/volumetric-semantically-consistent-3D-panoptic-mapping/wiki/Datasets)
-- [Basic usage](https://github.com/ethz-asl/voxblox-plusplus/wiki/Basic-usage)
+- [Basic usage](https://github.com/y9miao/volumetric-semantically-consistent-3D-panoptic-mapping/wiki/Basic-Usage)
 
 
 ## Citing
