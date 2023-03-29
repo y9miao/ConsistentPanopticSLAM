@@ -23,11 +23,12 @@ def parse_args():
     parse.add_argument("--log", type=str, default='', help="log info ")
     #configure
     parse.add_argument("--task", type=str, default='CoCoPano', help="task CoCoPano ")
-    # parameter
+    # parameter for instnace segmentation refinement
     parse.add_argument("--break_weak", type=int, default=1, help="hyper-parameter for Binary Energy ")
     parse.add_argument("--break_params", type=str, default="0.1_0.7_0.05_0.7", help="hyper-parameter for Break Reunion")
-    parse.add_argument("--K", type=float, default=10.0, help="hyper-parameter for Binary Energy ")
-    parse.add_argument("--theta", type=float, default=0.2, help="hyper-parameter for Binary Energy ")
+    # parameter for semantic regularization
+    parse.add_argument("--K", type=float, default=15.0, help="hyper-parameter for Binary Energy ")
+    parse.add_argument("--theta", type=float, default=0.5, help="hyper-parameter for Binary Energy ")
 
     return parse.parse_args()
 
