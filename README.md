@@ -1,6 +1,9 @@
 # Panoptic SLAM with semantic and geometric consistency
 
-**"Panoptic SLAM with semantic and geometric consistency"** is a pipeline for incrementally building volumetric object-centric maps during online scanning with a localized RGB-D camera. The code framework is based on [**Voxblox++**](https://github.com/ethz-asl/voxblox-plusplus).
+**"Panoptic SLAM with semantic and geometric consistency"** is a pipeline for simultaneously estimate image poses and incrementally building volumetric object-centric maps during online scanning with a localized RGB-D camera. The framework is divided into two parts: mapping and semantic-aided localization.
+
+## Mapping  
+The code framework is based on [**Voxblox++**](https://github.com/ethz-asl/voxblox-plusplus).
 The main difference against **Voxblox++** is: 
 <ol>
   <li> <a href="https://github.com/facebookresearch/detectron2">Panoptic segmentation</a> is applied in 2D RGB images instead of <a href="https://github.com/matterport/Mask_RCNN2">instance segmentation.</a></li>
