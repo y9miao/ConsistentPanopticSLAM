@@ -16,8 +16,9 @@ The main difference against **Voxblox++** is:
   <img src="./images/pipeline.png" width=700>
 </p>
 
+## Semantic-aided localization 
 
-## Getting started
+### Getting started
 - [Installing on Ubuntu](https://github.com/y9miao/volumetric-semantically-consistent-3D-panoptic-mapping/wiki/Installation)
 - [Datasets](https://github.com/y9miao/volumetric-semantically-consistent-3D-panoptic-mapping/wiki/Datasets)
 - [Basic usage](https://github.com/y9miao/volumetric-semantically-consistent-3D-panoptic-mapping/wiki/Basic-Usage)
