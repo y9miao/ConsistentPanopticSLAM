@@ -23,29 +23,28 @@ The main difference against **Voxblox++** is:
 - [Datasets](https://github.com/y9miao/volumetric-semantically-consistent-3D-panoptic-mapping/wiki/Datasets)
 - [Basic usage](https://github.com/y9miao/volumetric-semantically-consistent-3D-panoptic-mapping/wiki/Basic-Usage)
 
+## TODO
+- Update the code
+- Integrate the graph-based optimization part into online mapping pipeline
 
 ## Citing
 The framework is described in the following publication:
 
-<!-- - Margarita Grinvald, Fadri Furrer, Tonci Novkovic, Jen Jen Chung, Cesar Cadena, Roland Siegwart, and Juan Nieto, **Volumetric Instance-Aware Semantic Mapping and 3D Object Discovery**, in _IEEE Robotics and Automation Letters_, July 2019. [[PDF](https://arxiv.org/abs/1903.00268)] [[Video](https://www.youtube.com/watch?v=Jvl42VJmYxg)]
+<!-- - Yang Miao, Iro Armeni, Marc Pollefeys, Daniel Barath, **Volumetric Semantically Consistent 3D Panoptic Mapping**, arxiv, 2023. [[PDF](https://arxiv.org/abs/2309.14737)] [[Video] - to upload]
 
 
 ```bibtex
-@article{grinvald2019volumetric,
-  author={M. {Grinvald} and F. {Furrer} and T. {Novkovic} and J. J. {Chung} and C. {Cadena} and R. {Siegwart} and J. {Nieto}},
-  journal={IEEE Robotics and Automation Letters},
-  title={{Volumetric Instance-Aware Semantic Mapping and 3D Object Discovery}},
-  year={2019},
-  volume={4},
-  number={3},
-  pages={3037-3044},
-  doi={10.1109/LRA.2019.2923960},
-  ISSN={2377-3766},
-  month={July},
+@misc{miao2023volumetric,
+      title={Volumetric Semantically Consistent 3D Panoptic Mapping}, 
+      author={Yang Miao and Iro Armeni and Marc Pollefeys and Daniel Barath},
+      year={2023},
+      eprint={2309.14737},
+      archivePrefix={arXiv},
+      primaryClass={cs.RO}
 }
 ``` -->
 
-If you use **Voxblox++** in your research, please cite accordingly.
+If you use our work in your research, please cite accordingly.
 
 ## License
 The code is available under the [BSD-3-Clause license](https://github.com/ethz-asl/voxblox-plusplus/blob/master/LICENSE).
