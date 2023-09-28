@@ -42,6 +42,6 @@ The framework is described in the following publication:
       archivePrefix={arXiv},
       primaryClass={cs.RO}
 }
-``` -->
+```
 
 If you use our work in your research, please cite accordingly.
