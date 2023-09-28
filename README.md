@@ -30,7 +30,7 @@ The main difference against **Voxblox++** is:
 ## Citing
 The framework is described in the following publication:
 
-- Yang Miao, Iro Armeni, Marc Pollefeys, Daniel Barath, **Volumetric Semantically Consistent 3D Panoptic Mapping**, arxiv, 2023. [[PDF](https://arxiv.org/abs/2309.14737)] [[Video] - to upload]
+- Yang Miao, Iro Armeni, Marc Pollefeys, Daniel Barath, **Volumetric Semantically Consistent 3D Panoptic Mapping**, _arxiv_, 2023. [[PDF](https://arxiv.org/abs/2309.14737)] [[Video] - to upload]
 
 
 ```bibtex
