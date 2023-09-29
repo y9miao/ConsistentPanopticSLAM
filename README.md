@@ -6,7 +6,7 @@
 The code framework is based on [**Voxblox++**](https://github.com/ethz-asl/voxblox-plusplus).
 The main difference against **Voxblox++** is: 
 <ol>
-  <li> <a href="https://github.com/facebookresearch/detectron2">Panoptic segmentation</a> is applied in 2D RGB images instead of <a href="https://github.com/matterport/Mask_RCNN2">instance segmentation.</a></li>
+  <li> <a href="[https://github.com/facebookresearch/detectron2](https://github.com/facebookresearch/Mask2Former)">Panoptic segmentation</a> is applied in 2D RGB images instead of <a href="https://github.com/matterport/Mask_RCNN2">instance segmentation.</a></li>
   <li>A novel method to segment semantic-instance surface regions(super-points), as illustrated in Section III-B in the paper.</li>
   <li>A new graph optimization-based semantic labeling and instance refinement algorithm, as illustrated in Section III-C & Section III-D in the paper.</li>
   <li>The proposed framework achieves state-of-the-art 2D-to-3D instance segmentation accuracy, as illustrated in Section IV in the paper.</li>
@@ -14,20 +14,14 @@ The main difference against **Voxblox++** is:
 
 <p align="center">
   <img src="./images/pipeline.png" width=700>
-</p>
+</p>  
 
-## Semantic-aided localization 
+### Some Implementation details
+- For experiments shown in Table II and III, we use 18 instance classes(excluding wall and floor) of [NYU20 labels](https://kaldir.vc.in.tum.de/scannet_benchmark/labelids.txt) for evaluation.
+- As the pretrained model from Mask2former outputs CoCoPano classes. We fintune the model in train set of [ScanNet Dataset](https://kaldir.vc.in.tum.de/scannet_benchmark)so that it can output semantic labels in NYU40 space. The finetuned model can be download [here](https://drive.google.com/file/d/1vHszTmSo7HGZFHJHF7QAhazOI9NcuRdv/view?usp=sharing).
+- In order for fair comparison, the **Voxblox++** and **Han et al** in the paper use the finetuned Mask2former model for panoptic segmentation instead of their orginal ones. 
 
-### Getting started
-- [Installing on Ubuntu](https://github.com/y9miao/volumetric-semantically-consistent-3D-panoptic-mapping/wiki/Installation)
-- [Datasets](https://github.com/y9miao/volumetric-semantically-consistent-3D-panoptic-mapping/wiki/Datasets)
-- [Basic usage](https://github.com/y9miao/volumetric-semantically-consistent-3D-panoptic-mapping/wiki/Basic-Usage)
-
-## TODO
-- Update the code
-- Integrate the graph-based optimization part into online mapping pipeline
-
-## Citing
+### Citing
 The framework is described in the following publication:
 
 - Yang Miao, Iro Armeni, Marc Pollefeys, Daniel Barath, **Volumetric Semantically Consistent 3D Panoptic Mapping**, _arxiv_, 2023. [[PDF](https://arxiv.org/abs/2309.14737)] [[Video] - to upload]
@@ -45,3 +39,15 @@ The framework is described in the following publication:
 ```
 
 If you use our work in your research, please cite accordingly.
+
+### TODO
+- Update the code
+- Integrate the graph-based optimization part into online mapping pipeline
+
+## Semantic-aided localization 
+<!--
+### Getting started
+- [Installing on Ubuntu](https://github.com/y9miao/volumetric-semantically-consistent-3D-panoptic-mapping/wiki/Installation)
+- [Datasets](https://github.com/y9miao/volumetric-semantically-consistent-3D-panoptic-mapping/wiki/Datasets)
+- [Basic usage](https://github.com/y9miao/volumetric-semantically-consistent-3D-panoptic-mapping/wiki/Basic-Usage)
+-->
