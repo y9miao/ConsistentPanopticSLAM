@@ -16,6 +16,11 @@ The main difference against **Voxblox++** is:
   <img src="./images/pipeline.png" width=700>
 </p>  
 
+### Getting started
+- [Installing on Ubuntu](https://github.com/y9miao/volumetric-semantically-consistent-3D-panoptic-mapping/wiki/Installation)
+- [Datasets](https://github.com/y9miao/volumetric-semantically-consistent-3D-panoptic-mapping/wiki/Datasets)
+- [Basic usage](https://github.com/y9miao/volumetric-semantically-consistent-3D-panoptic-mapping/wiki/Basic-Usage)
+
 ### Some Implementation details
 - For experiments shown in Table II and III, we use 18 instance classes(excluding wall and floor) of [NYU20 labels](https://kaldir.vc.in.tum.de/scannet_benchmark/labelids.txt) for evaluation.
 - As the pretrained model from Mask2former outputs CoCoPano classes. We fintune the model in train set of [ScanNet Dataset](https://kaldir.vc.in.tum.de/scannet_benchmark)so that it can output semantic labels in NYU40 space. The finetuned model can be download [here](https://drive.google.com/file/d/1vHszTmSo7HGZFHJHF7QAhazOI9NcuRdv/view?usp=sharing).
@@ -24,7 +29,7 @@ The main difference against **Voxblox++** is:
 ### Citing
 The framework is described in the following publication:
 
-- Yang Miao, Iro Armeni, Marc Pollefeys, Daniel Barath, **Volumetric Semantically Consistent 3D Panoptic Mapping**, _arxiv_, 2023. [[PDF](https://arxiv.org/abs/2309.14737)] [[Video](https://youtu.be/A3aY7pdYAa4)]
+- Yang Miao, Iro Armeni, Marc Pollefeys, Daniel Barath, ***"Volumetric Semantically Consistent 3D Panoptic Mapping"***, **IROS 2024 (<span style="color: red;">Oral Presentation</span>)**. [[PDF](https://arxiv.org/abs/2309.14737)] [[Video](https://youtu.be/A3aY7pdYAa4)]
 
 
 ```bibtex
@@ -40,14 +45,11 @@ The framework is described in the following publication:
 
 If you use our work in your research, please cite accordingly.
 
-### TODO
-- Update the code
-- Integrate the graph-based optimization part into online mapping pipeline
-
 ## Semantic-aided localization 
-<!--
-### Getting started
-- [Installing on Ubuntu](https://github.com/y9miao/volumetric-semantically-consistent-3D-panoptic-mapping/wiki/Installation)
-- [Datasets](https://github.com/y9miao/volumetric-semantically-consistent-3D-panoptic-mapping/wiki/Datasets)
-- [Basic usage](https://github.com/y9miao/volumetric-semantically-consistent-3D-panoptic-mapping/wiki/Basic-Usage)
--->
+Apart from 2D-3D semantic mapping, this project also explores semantic-aided localization.
+
+
+### TODO
+- Update the code of semantic-aided localization 
+<!-- - Integrate the graph-based optimization part into online mapping pipeline -->
+

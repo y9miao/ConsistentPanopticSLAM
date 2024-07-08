@@ -1,3 +1,5 @@
+# this script is to read in RGB-D frames and then to apply consistent semantic graph cut and instance segmentation refinement given 
+
 import sys
 import os
 import argparse
