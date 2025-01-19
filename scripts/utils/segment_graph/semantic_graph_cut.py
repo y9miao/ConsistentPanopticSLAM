@@ -3,12 +3,14 @@ import open3d as o3d
 import open3d.core as o3c
 import copy
 import time
-from panoptic_mapping.utils.segment_graph.utils import *
-from panoptic_mapping.utils.semantics.pano_colormap import  VALID_CLASS_IDS_GT ,color_map
+from utils.segment_graph.utils import *
+# from utils.semantics.pano_colormap import  VALID_CLASS_IDS_GT ,color_map
+from semantics import general_color_map
 import maxflow
 
 class SemanticGraphCut:
-    def __init__(self, instances_info, labels_info, confidence_map, device, log_io, K = 1.0, theta = 0.5):
+    def __init__(self, instances_info, labels_info, confidence_map, \
+                 device, log_io, K = 1.0, theta = 0.5, task = 'CoCoPano'):
 
         self.device = device
 
@@ -35,16 +37,18 @@ class SemanticGraphCut:
         # SegGraph initialized!
         if self.log_io is not None:
             self.log_to_file("SemanticSegGraphCut initialized!" + '\n')
+
+        # init semantics meta data
+        general_color_map.init(task)
+        self.isThing = general_color_map.IsThing
+        self.color_map = general_color_map.COLOR_MAP
+        self.VALID_CLASS_IDS_GT = general_color_map.VALID_CLASS_IDS
     
     def log_to_file(self, info):
         self.log_io.write(info)
     def log_list_to_file(self, infos):
         for info in infos:
             self.log_io.write(info)
-
-    def isThing(self, semantic_label):
-        BackgroundSemantic = 80
-        return semantic_label < BackgroundSemantic
 
     def computeLabelInfo(self, labels_info):
         semantic_seg_map = {}
@@ -246,15 +250,16 @@ class SemanticGraphCut:
             for sem_beta_i in range(sem_alpha_i+1, len(semantic_list)):
                 sem_beta = semantic_list[sem_beta_i]
                 # only consider pairs include semantic label we care about
-                if (sem_alpha not in VALID_CLASS_IDS_GT) and (sem_beta not in VALID_CLASS_IDS_GT):
+                if (sem_alpha not in self.VALID_CLASS_IDS_GT) and (sem_beta not in self.VALID_CLASS_IDS_GT):
                     continue
-                if (sem_alpha >=80 ) and (sem_alpha >=80):
+                if (not self.isThing(sem_alpha)) and (not self.isThing(sem_beta)):
                     continue 
                 sem_pairs.append( (sem_alpha, sem_beta) )
         
         return sem_pairs
 
-
+    # from memory_profiler import profile
+    # @profile
     def regularizeSemantic(self):
         """ method description
         use alpha-swap to regularize seg graph
@@ -399,7 +404,7 @@ class SemanticGraphCut:
                 seg_label_color_tensor = o3c.Tensor(seg_label_color, dtype=color_dtype, device=self.device)
                 seg_vertice_index = ( o3c.Tensor.abs(seg_label_color_tensor - label_colors_tensor) < 1e-4 ).all(dim = 1)
 
-                semantic_color = np.array( color_map[labels_info_refined[seg_label]['semantic']])*1.0/255.0 
+                semantic_color = np.array( self.color_map[labels_info_refined[seg_label]['semantic']])*1.0/255.0 
                 out_semantic_colors_tensor[seg_vertice_index] = semantic_color
 
             # generate mesh
@@ -429,7 +434,7 @@ class SemanticGraphCut:
                 seg_label_color_tensor = o3c.Tensor(seg_label_color, dtype=color_dtype, device=self.device)
                 seg_vertice_index = ( o3c.Tensor.abs(seg_label_color_tensor - label_colors_tensor) < 1e-4 ).all(dim = 1)
 
-                semantic_color = np.array( color_map[labels_info_refined[seg_label]['semantic']])*1.0/255.0 
+                semantic_color = np.array( self.color_map[labels_info_refined[seg_label]['semantic']])*1.0/255.0 
                 out_semantic_colors_tensor[seg_vertice_index] = semantic_color
 
             # generate mesh

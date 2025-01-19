@@ -3,16 +3,31 @@ import sys
 import os
 import time
 import h5py
-import re
+
 import numpy as np
 from scipy.spatial.transform import Slerp, Rotation
 import cv2
 from collections import Counter
 import pcl
 
-import panoptic_mapping.utils.semantics.semantic_utils as semantic_utils
-from panoptic_mapping.utils.semantics.pano_colormap import *
-import semantic_mapping.utils.depth_seg_utils as depth_seg_utils
+from semantics.pano_colormap import *
+
+def preprocess(depth_img):
+    depth_img_rescaled = None
+    if depth_img.dtype == np.uint16:
+        # convert depth image from mili-meters to meters
+        depth_img_rescaled = cv2.rgbd.rescaleDepth(depth_img, cv2.CV_32FC1)
+    elif depth_img.dtype == np.float32:
+        depth_img_rescaled = depth_img
+    else:
+        print("Unknown depth image encoding.")
+        return None
+
+    kZeroValue = 0.0
+    nan_mask = (depth_img_rescaled != depth_img_rescaled)
+    depth_img_rescaled[nan_mask] = kZeroValue # set nan pixels to 0
+
+    return depth_img_rescaled
 
 class Segment:
     def __init__(self, points, is_thing, instance_label, class_label, \
@@ -130,7 +145,7 @@ class SegmentsGenerator:
             return result
         
         # depth segmentation
-        depth_img_scaled = depth_seg_utils.preprocess(depth_img)
+        depth_img_scaled = preprocess(depth_img)
         self.depth_segmentor.depthSegment(depth_img_scaled,rgb_img.astype(np.float32))
         depth_map = self.depth_segmentor.get_depthMap()
         # normal_map = self.depth_segmentor.get_normalMap()
@@ -167,67 +182,6 @@ class SegmentsGenerator:
         result = {'seg_map': seg_map, 'id2info_instance':id2info_instance, 'id2info_stuff':id2info_stuff, \
                     'segment_masks': segment_masks, 'depth_map': depth_map}
         return result
-
-    def Segmennt2DRunAnalysis(self, depth_img, rgb_img, frame_i, heap_pointer):
-        result = None
-        # panoptic segmentation
-        time_start = time.time()
-        panoptic_result = self.panoptic_segmentor.forward(rgb_img)
-        if len(panoptic_result['info']) == 0:
-            return result, None, None
-        
-        # depth segmentation
-        time_dep_seg_start = time.time()
-        # memory_table_initial = heap_pointer.heap()
-        depth_img_scaled = depth_seg_utils.preprocess(depth_img)
-        self.depth_segmentor.depthSegment(depth_img_scaled,rgb_img.astype(np.float32))
-        depth_map = self.depth_segmentor.get_depthMap()
-        # normal_map = self.depth_segmentor.get_normalMap()
-        segment_masks =  self.depth_segmentor.get_segmentMasks()
-        time_dep_seg_finished = time.time()
-        # memory_table_dep_end= heap_pointer.heap()
-        
-        pattern = "Total size = (\d+) bytes"
-        # depth_seg_memory_initial = int(re.search(pattern, str(memory_table_initial[0])).group(1))
-        # depth_seg_memory_end= int(re.search(pattern, str(memory_table_dep_end[0])).group(1))
-        # depth_seg_memory = depth_seg_memory_end - depth_seg_memory_initial
-        depth_seg_memory = 0
-        if len(segment_masks) == 0:
-            return result, None, None
-
-        # extract instance/stuff information 
-        time_fuse1_start = time.time()
-        id2info_instance = {}
-        id2info_stuff = {}
-        seg_map = panoptic_result['seg_map']
-        ids, areas = np.unique(seg_map, return_counts=True)
-        for id_info in panoptic_result['info']:
-            id = id_info['id']
-            is_thing = id_info['isthing']
-            if is_thing:
-                # instance
-                id2info_instance[id] = id_info
-                area = areas[np.where(ids == id)]
-                id2info_instance[id]['area'] = area
-
-            else:
-                # stuff
-                id2info_stuff[id] = id_info.copy()
-                id2info_stuff[id]['category_id'] += 80
-        time_fuse1_end = time.time()
-        if self.save_resutls_img:
-            semantic_vis = self.panoptic_segmentor.visualize(panoptic_result)
-            # label_map = self.depth_segmentor.get_labelMap()
-            panoptic_img_f = os.path.join(self.semantic_folder,str(frame_i+1)+".png")
-            # depth_seg_img_f = os.path.join(self.depth_seg_folder,str(frame_i+1)+".png")
-            cv2.imwrite(panoptic_img_f,cv2.cvtColor(semantic_vis, cv2.COLOR_RGB2BGR))
-            # cv2.imwrite(depth_seg_img_f,label_map)
-
-        result = {'seg_map': seg_map, 'id2info_instance':id2info_instance, 'id2info_stuff':id2info_stuff, \
-                    'segment_masks': segment_masks, 'depth_map': depth_map}
-        # time for geo_seg and panoptic seg
-        time_2d_seg = (time_dep_seg_finished-time_dep_seg_start, time_dep_seg_start-time_start, time_fuse1_end-time_fuse1_start)
-        return result, time_2d_seg, depth_seg_memory
 
     def generateSegments(self, seg_result_2D, pose, frame_i):
         # TODEBUG
@@ -394,51 +348,6 @@ class SegmentsGenerator:
         # self.gsm_node.outputLog("   Seg Generation in python cost %f s" %(time.time() - t0))
         return segment_list
 
-    def frameToSegmentsRunAnalysis(self, depth_img, rgb_img, pose, frame_i, heap_pointer):
-        # TODEBUG
-        segment_list = []
-
-        seg_result_2D, time_2d_segs, memory_depth_seg = \
-            self.Segmennt2DRunAnalysis(depth_img, rgb_img, frame_i, heap_pointer)
-        if seg_result_2D is None or time_2d_segs is None or memory_depth_seg is None:
-            return segment_list, None # return if nothing from 2D segmentation
-
-        pattern = "Total size = (\d+) bytes"
-        # memory_table_initial = heap_pointer.heap()
-        time_fusion_start = time.time()
-        segment_list = self.generateSegments(seg_result_2D, pose, frame_i)
-        time_fusion_end = time.time()
-        # memory_table_dep_end= heap_pointer.heap()
-        
-        # fuse2d_memory_initial = int(re.search(pattern, str(memory_table_initial[0])).group(1))
-        # fuse2d_memory_end= int(re.search(pattern, str(memory_table_dep_end[0])).group(1))
-        # fuse2d_memory = fuse2d_memory_end - fuse2d_memory_initial
-        fuse2d_memory = 0
-
-        # save segments information
-        if self.save_segments:
-            seg_info = {'is_thing':[], 'instance_label':[],'class_label':[], 'inst_confidence':[], \
-                'overlap_ratio': [], 'pose':[], 'center':[], 'seg_num':0}
-            for seg in segment_list:
-                seg_info['is_thing'].append(seg.is_thing)
-                seg_info['instance_label'].append(seg.instance_label)
-                seg_info['class_label'].append(seg.class_label)
-                seg_info['inst_confidence'].append(seg.inst_confidence)
-                seg_info['overlap_ratio'].append(seg.overlap_ratio)
-                seg_info['pose'].append(seg.pose)
-                seg_info['center'].append(seg.center)
-            seg_info['seg_num'] = len(segment_list)
-            seg_info_f = os.path.join(self.segments_folder, str(frame_i).zfill(5)+"_seg_info.h5")
-            dictToHd5(seg_info_f, seg_info)
-
-        # self.gsm_node.outputLog("   Seg Generation in python cost %f s" %(time.time() - t0))
-
-        # depth_seg time, panoptic seg time, fuse time
-        time_2d = (time_2d_segs[0], time_2d_segs[1], time_2d_segs[0] + time_fusion_end - time_fusion_start)
-        # depth_seg memory; fuse memory
-        memory_2d = (memory_depth_seg, fuse2d_memory)
-        return segment_list, (time_2d, memory_2d)
-
     def loadSegments(self, depth_scaled, camera_K, frame_i):
 
         segments_list = []
@@ -519,8 +428,8 @@ def checkSegmentFramesEqual(segs_framesA, segs_framesB):
             return False
     return True
 
-class ScennNNDataLoader:
-    def __init__(self, dir):
+class DataLoader:
+    def __init__(self, dir, traj_filename):
         self.dir = dir
         self.depth_folder = os.path.join(self.dir, "depth")
         self.rgb_folder = os.path.join(self.dir, "image")
@@ -529,15 +438,14 @@ class ScennNNDataLoader:
         self.depth_files.sort()
         self.rgb_files.sort()
 
-        self.traj_f = os.path.join(self.dir, "trajectory.log")
+        self.traj_f = os.path.join(self.dir, traj_filename)
         self.trajectory = None
         self.readTrajectory()
-
         depth_index_max,depth_index_min = int(self.depth_files[-1][5:10]),int(self.depth_files[0][5:10])
         rgb_index_max,rgb_index_min = int(self.rgb_files[-1][5:10]),int(self.rgb_files[0][5:10])
         tra_indexes = np.array(list(self.trajectory.keys()))
         self.index_min = max(rgb_index_min,depth_index_min,tra_indexes[0])
-        self.index_max = min(rgb_index_max,depth_index_max,tra_indexes[-1])    
+        self.index_max = min(rgb_index_max,depth_index_max,tra_indexes[-1])   
 
     def readTrajectory(self):
         self.trajectory = {}
@@ -558,6 +466,28 @@ class ScennNNDataLoader:
 
             elif(len(data) == 4):
                 T_WC.append([float(data[0]),float(data[1]),float(data[2]),float(data[3])])
+        f.close()
+
+    def readOldTrajectory(self):
+        self.old_trajectory = {}
+
+        f = open(self.old_traj_f,'r')
+        T_WC = []
+        current_id = None
+        for line in f.readlines():
+            data = line.split(' ')
+            if(len(data) == 3):
+                if T_WC:
+                    T_WC = np.array(T_WC)
+                    r = Rotation.from_matrix(T_WC[:3,:3])
+                    T_WC[:3,:3] = r.as_matrix()
+                    self.old_trajectory[current_id] = np.array(T_WC).reshape(4,4)
+                current_id = int(data[0])
+                T_WC = []
+
+            elif(len(data) == 4):
+                T_WC.append([float(data[0]),float(data[1]),float(data[2]),float(data[3])])
+        f.close()
 
     def getDataFromIndex(self, index):
         # normally start from 1: image00001.png
@@ -572,6 +502,24 @@ class ScennNNDataLoader:
         depth_img = cv2.imread(depth_f,cv2.IMREAD_UNCHANGED)
         pose = self.trajectory[index]
         return rgb_img, depth_img, pose.astype(np.float32)
+    
+    def getPathFromIndex(self, index):
+        # normally start from 1: image00001.png
+        if(index<self.index_min or index>self.index_max):
+            return None,None
+        image_f = self.rgb_files[index]
+        depth_f = self.depth_files[index]
+        image_f = os.path.join(self.rgb_folder, image_f)
+        depth_f = os.path.join(self.depth_folder, depth_f)
+
+        # rgb_img = cv2.imread(image_f,cv2.IMREAD_UNCHANGED)
+        # depth_img = cv2.imread(depth_f,cv2.IMREAD_UNCHANGED)
+        # pose = self.trajectory[index]
+        return image_f, depth_f
+    
+    def getPoseFromIndex(self, index):
+        pose = self.trajectory[index]
+        return pose
 
     def getDepthScaledFromIndex(self, index):
         if(index<self.index_min or index>self.index_max):
@@ -586,3 +534,16 @@ class ScennNNDataLoader:
     def getCameraMatrix(self):
         K = np.array([[544.47329,0,320],[0,544.47329,240],[0,0,1]])
         return K.astype(np.float32)
+    
+def isPoseValid( pose):
+    is_nan = np.isnan(pose).any() or np.isinf(pose).any()
+    if is_nan:
+        return False
+
+    R_matrix = pose[:3, :3]
+    I = np.identity(3)
+    is_rotation_valid = ( np.isclose( np.matmul(R_matrix, R_matrix.T), I , atol=1e-3) ).all and np.isclose(np.linalg.det(R_matrix) , 1, atol=1e-3)
+    if not is_rotation_valid:
+        return False
+
+    return True

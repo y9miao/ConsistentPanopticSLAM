@@ -1,0 +1,25 @@
+_BASE_: ./maskformer2_R50_bs16_50ep.yaml
+MODEL:
+  BACKBONE:
+    NAME: "D2SwinTransformer"
+  SWIN:
+    EMBED_DIM: 128
+    DEPTHS: [2, 2, 18, 2]
+    NUM_HEADS: [4, 8, 16, 32]
+    WINDOW_SIZE: 12
+    APE: False
+    DROP_PATH_RATE: 0.3
+    PATCH_NORM: True
+    PRETRAIN_IMG_SIZE: 384
+  WEIGHTS: "/home/yang/toolbox/test_field/Detectron2WSP/Mask2Former/models/Mask2FormerSwinBIN21k.pkl"
+  PIXEL_MEAN: [123.675, 116.280, 103.530]
+  PIXEL_STD: [58.395, 57.120, 57.375]
+INPUT:
+  DATASET_MAPPER_NAME: "mask_former_panoptic"
+DATASETS:
+  TRAIN: ["scannet_train"]
+  TEST: ["scannet_val"]
+SOLVER:
+  MAX_ITER: 2000
+  IMS_PER_BATCH: 2
+

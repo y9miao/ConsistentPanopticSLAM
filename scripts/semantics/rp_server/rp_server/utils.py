@@ -82,7 +82,7 @@ def bin2detectron_instseg(dt_bin):
 
 def bin2detectron_panoseg(dt_bin):
     """
-    Pack detectron2 (Pano_seg) result data into binary
+    Unpack detectron2 (Pano_seg) result data from binary
 
     | pkg_size (4B int) | map_size (4B int) | width (4B int) | ...
     | height (4B int) | binary_map (map_size B) | json_info_binary (rest) |
@@ -106,12 +106,10 @@ def bin2detectron_panoseg(dt_bin):
     
     return dt_res
 
-
 DT_DECODER = {
     "Pano_seg": bin2detectron_panoseg,
     "Inst_seg": bin2detectron_instseg
 }
-
 
 def bin2detectron(dt_bin, model_type="Pano_seg"):
     if model_type in DT_DECODER:
@@ -119,3 +117,35 @@ def bin2detectron(dt_bin, model_type="Pano_seg"):
     else:
         raise Exception("[bin2detectron] Does not support model type: ".format(model_type))
 
+def bin2mask2former_panoseg(mask2former_bin):
+    """
+    Unpack mask2former (Pano_seg) result data from binary
+
+    | pkg_size (4B int) | map_size (4B int) | width (4B int) | ...
+    | height (4B int) | binary_map (map_size B) | json_info_binary (rest) |
+    """
+
+    if len(mask2former_bin) == 0:
+        return {}
+    
+    map_size = bin2int(mask2former_bin[:4])
+    w, h = bin2int(mask2former_bin[4:8]), bin2int(mask2former_bin[8:12])
+    seg_map_bin = zlib.decompress(mask2former_bin[12:12+map_size])
+    seg_map = np.frombuffer(seg_map_bin, dtype="uint8").reshape((h, w))
+    info_json = json.loads( mask2former_bin[12 + map_size:].decode() )
+
+    mast2former_predictions = {
+        "seg_map": seg_map,
+        "info": info_json["info"],
+    }
+    return mast2former_predictions
+
+Mask2Former_DECORDER = {
+    "Pano_seg": bin2mask2former_panoseg,
+}
+
+def bin2Mask2Former(dt_bin, model_type="Pano_seg"):
+    if model_type in Mask2Former_DECORDER:
+        return Mask2Former_DECORDER[model_type](dt_bin)
+    else:
+        raise Exception("[bin2Mask2Former] Does not support model type: ".format(model_type))

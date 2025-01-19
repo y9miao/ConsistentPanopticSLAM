@@ -1,5 +1,6 @@
 import sys
 import os
+import time
 from tqdm import tqdm
 import argparse
 import warnings
@@ -9,16 +10,20 @@ import cv2
 import numpy as np
 from scipy.spatial.transform import Rotation as R
 
-import panoptic_mapping.utils.semantics.semantic_utils as semantic_utils
-from panoptic_mapping.utils.common import *
+import semantics.semantic_utils as semantic_utils
 
 def parse_args():
     data_path = os.environ.get('DATA')
     parse = argparse.ArgumentParser(description='Semantic Mapping-Python') 
+    # dataset 
+    parse.add_argument("--dataset", type=str, default="scenenn", help="which data set to use, scenenn or scannet ")
+
     # files path
     parse.add_argument("--scene_num", type=str, required=True, help="which scene for mapping ")
     parse.add_argument("--result_folder", type=str,required=True,help="folder of mapping results")
-    parse.add_argument("--data_folder", type=str, default=data_path, help="which scene for mapping ")
+    parse.add_argument("--data_folder", type=str, required=True, help="which scene for mapping ")
+    parse.add_argument("--traj_filename", type=str, default="trajectory.log", help="which trajectory_to_use ")
+    parse.add_argument("--gt_mask_folder", type=str, default="", help="valid when dataset is nyu gt, path to g.t. mask annotations")
 
     #log
     parse.add_argument("--log", type=str, default='', help="log info ")
@@ -28,17 +33,27 @@ def parse_args():
     parse.add_argument("--step", type=int, default=1, help="use one frame for integration every n_step frames ")
     parse.add_argument("--num_threads", type=int, default=-1, help="use one frame for integration every n_step frames ")
     parse.add_argument("--debug", action="store_true", help="whether to use visualization ")
-    parse.add_argument("--use_estimated_pose", action="store_true", help="whether to use estimated pose ")
+    parse.add_argument("--preload", action="store_true", help="whether to preload images ")
 
-    parse.add_argument("--use_temporal_results", action='store_true', help="use intermediate results ")
-    parse.add_argument("--temporal_results", action='store_true', help="save intermediate results ")
+    parse.add_argument("--use_temporal_results", action='store_true', help="use 2D segments results ")
+    parse.add_argument("--temporal_results", action='store_true', help="save intermediate 2D segments results ")
     parse.add_argument("--temporal_results_img", action='store_true', help="save intermediate results in images ")
     parse.add_argument("--intermediate_seg_folder", type=str, default='segments', help="folder to save intermediate segments result ")
 
-    parse.add_argument("--task", type=str, default="coco80", help="coco80; nyu13; cocoPano")
+    parse.add_argument("--use_temporal_panoptics", action='store_true', help="use 2D panoptic segments ")
+    parse.add_argument("--temporal_panoptics", action='store_true', help="save 2D panoptic segments ")
+    parse.add_argument("--temporal_panoptics_folder", type=str, default='segments', help="folder to save 2D panoptic segments ")
+
+    parse.add_argument("--use_temporal_geometrics", action='store_true', help="use 2D geometrics segments ")
+    parse.add_argument("--temporal_geometrics", action='store_true', help="save 2D geometrics segments ")
+    parse.add_argument("--temporal_geometrics_folder", type=str, default='segments', help="folder to save 2D geometrics segments result ")
+
+    parse.add_argument("--task", type=str, default="coco80", help="coco80; nyu13; Nyu40; cocoPano")
  
     parse.add_argument("--data_association", type=int, default=0, help="0 for Ori; 1 for SemMerge; \
-        2 for SemMerge+BackgroundMerge+only consider size>1000")
+        2 for SemMerge+BackgroundMerge+only consider size>1000; \
+        3 for SemMerge+BackgroundMerge+only consider size>1000 + considerSem when register superpoint; \
+        4 for no merging; 5 for using designated superpoint id for 3D segments")
     parse.add_argument("--inst_association", type=int, default=0, help="0 for Ori; 1 for Label-Sem-Inst; \
         2 for Label-Inst-Sem; 3 for SegGraph ")
 
@@ -78,6 +93,33 @@ def main():
     # set files path
     args = parse_args()
 
+    # dataset 
+    dataset = args.dataset
+    panoptic_node = None
+    if dataset == "scenenn":
+        from utils.common_scenenn import \
+            Segment, SegmentsGenerator, DataLoader, isPoseValid, checkSegmentFramesEqual
+        PerceptionNode = semantic_utils.PerceptionNode
+        panoptic_node = PerceptionNode()
+    elif dataset == "scannet":
+        from utils.common_scannet import \
+            Segment, SegmentsGenerator, DataLoader, isPoseValid, checkSegmentFramesEqual
+        PerceptionNode = semantic_utils.PerceptionNode
+        panoptic_node = PerceptionNode()
+    elif dataset == "scannet_nyu":
+        from utils.common_scannet_nyu import \
+            Segment, SegmentsGenerator, DataLoader, isPoseValid, checkSegmentFramesEqual
+        PerceptionNode = semantic_utils.Mask2FormerNode
+        panoptic_node = PerceptionNode()
+    elif dataset == "scannet_nyu_gt":
+        from utils.common_scannet_nyu import \
+            Segment, SegmentsGenerator, DataLoader, isPoseValid, checkSegmentFramesEqual
+        PerceptionNode = semantic_utils.GTMaskNode
+        panoptic_node = PerceptionNode(args.gt_mask_folder)
+    else:
+        print(" please choose suitable dataset !")
+        return None
+
     # set configuration
     use_temporal_results = args.use_temporal_results
     save_segments = args.temporal_results
@@ -106,8 +148,8 @@ def main():
     log_info = args.log
 
     # DataLoader
-    use_estimated_pose = args.use_estimated_pose
-    data_loader = ScennNNDataLoader(scene_folder, use_estimated_pose)
+    traj_filename = args.traj_filename
+    data_loader = DataLoader(scene_folder, traj_filename, args.preload, args.preload)
     _a,depth_img,_b = data_loader.getDataFromIndex(1)
     height = depth_img.shape[0]
     width = depth_img.shape[1]
@@ -115,6 +157,7 @@ def main():
 
     # configuration
     start = args.start
+    assert(start >=  data_loader.indexes[0])
     end = args.end
     if end<0:
         end = data_loader.index_max
@@ -132,7 +175,6 @@ def main():
     if(not use_temporal_results):
         # initialized segmentors and seg generators
         dep_segmentor = depth_segmentation_py.DepthSegmentation_py(height,width,cv2.CV_32FC1, K_depth)
-        panoptic_node = semantic_utils.PerceptionNode()
         segments_generator = SegmentsGenerator(gsm_node, dep_segmentor, panoptic_node, \
             save_results_img, result_dirs['folder'], save_segments, use_temporal_results, segments_folder)
 
@@ -144,7 +186,7 @@ def main():
             segment_list = segments_generator.frameToSegments(depth_img, rgb_img, pose, i)
             gsm_node.outputLog("   Seg Generation in python cost %f s" %(time.time() - t0))
 
-            # check segments are saved correctly
+            # # check segments are saved correctly
             # depth_scaled = data_loader.getDepthScaledFromIndex(i)
             # segments_list_load = segments_generator.loadSegments(depth_scaled, K_depth, i)
             # check_equal = checkSegmentFramesEqual(segment_list, segments_list_load)
@@ -156,6 +198,8 @@ def main():
             if len(segment_list) == 0:
                 continue
             for segment in segment_list:
+                if segment.points.shape[0] < 1:
+                    continue
                 if(seg_graph_confidence == 3):
                     segment.calculateBBox()
                 gsm_node.insertSegments(segment.points,
@@ -170,10 +214,18 @@ def main():
         for i in tqdm(range(start,end,step)):
             # read in segments
             depth_scaled = data_loader.getDepthScaledFromIndex(i)
+            if depth_scaled is None:
+                continue
             segment_list = segments_generator.loadSegments(depth_scaled, K_depth, i)
             if len(segment_list) == 0:
                 continue
-
+            pose_invalid = False
+            for seg in segment_list:
+                if not isPoseValid(seg.pose):
+                    pose_invalid = True
+                    break
+            if pose_invalid:
+                continue
             for segment in segment_list:
                 if(seg_graph_confidence == 3 and segment.is_thing):
                     segment.calculateBBox()

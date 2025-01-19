@@ -2,13 +2,16 @@ import numpy as np
 import open3d as o3d
 import open3d.core as o3c
 import copy
+import pickle
+import os
 
 from utils.segment_graph.utils import *
 from semantics import general_color_map
-class SegGraph:
+class SegGraphSpecific:
     def __init__(self, instances_info, labels_info, confidence_map, semantic_instance_map, \
         semantic_updated_segs = [],  log_io = None,  task = "CoCoPano", \
-            device = o3c.Device("CPU", 0), break_weak_connection = True, parameter = None):
+            device = o3c.Device("CPU", 0), break_weak_connection = True, parameter = None,
+            parameter_class_specific_file = None):
 
         # hyper-parameter
         self.connect_threshold_label_side, self.connect_threshold_high_label_side, \
@@ -19,6 +22,12 @@ class SegGraph:
             self.connect_threshold_label_side, self.connect_threshold_high_label_side, \
             self.connect_threshold_inst_side, self.connect_threshold_between_edges = \
                 tuple(parameter)
+            
+        self.params_specific = {}
+        if (parameter_class_specific_file is not None) and \
+            (os.path.isfile(parameter_class_specific_file)):
+            with open(parameter_class_specific_file, 'rb') as f:
+                self.params_specific = pickle.load(f)
 
         # semantics meta data
         general_color_map.init(task)
@@ -148,20 +157,6 @@ class SegGraph:
         """
         # break parameter 
         inst_confidence_threshold = 3
-        break_threshold = inst_break_threshold # max_link_between_label_inst / inst_confidence 
-        # max edge connection parameter
-        connect_threshold_label_side = self.connect_threshold_label_side
-        connect_threshold_high_label_side = self.connect_threshold_high_label_side
-        connect_threshold_inst_side = self.connect_threshold_inst_side
-        # edge connection parameter
-        connect_threshold_between_edges = self.connect_threshold_between_edges
-
-        log_info = "using parameter: " + str(inst_break_threshold) + "  " + \
-            str(connect_threshold_label_side) + "_" + \
-            str(connect_threshold_high_label_side) + "_" + \
-            str(connect_threshold_inst_side) + "_" + \
-            str(connect_threshold_between_edges) + '\n'
-        self.log_to_file(log_info)
 
         # output variables
         instances_info_refined =copy.deepcopy(self.instances_info_initial)
@@ -169,7 +164,38 @@ class SegGraph:
         labels_updated = {}
         # loop over all semantics
         for semantic_label in self.semantic_instance_map:
-            
+            break_threshold = inst_break_threshold # max_link_between_label_inst / inst_confidence 
+            # max edge connection parameter
+            connect_threshold_label_side = self.connect_threshold_label_side
+            connect_threshold_high_label_side = self.connect_threshold_high_label_side
+            connect_threshold_inst_side = self.connect_threshold_inst_side
+            # edge connection parameter
+            connect_threshold_between_edges = self.connect_threshold_between_edges
+
+            if('TH_break' in self.params_specific):
+                if(semantic_label in self.params_specific['TH_break']):
+                    break_threshold = self.params_specific['TH_break'][semantic_label]
+            if('TH_label' in self.params_specific):
+                if(semantic_label in self.params_specific['TH_label']):
+                    connect_threshold_label_side = self.params_specific['TH_label'][semantic_label]
+            if('TH_label_high' in self.params_specific):
+                if(semantic_label in self.params_specific['TH_label_high']):
+                    connect_threshold_high_label_side = self.params_specific['TH_label_high'][semantic_label]
+            if('TH_inst' in self.params_specific):
+                if(semantic_label in self.params_specific['TH_inst']):
+                    connect_threshold_inst_side = self.params_specific['TH_inst'][semantic_label]
+            if('TH_edges' in self.params_specific):
+                if(semantic_label in self.params_specific['TH_edges']):
+                    connect_threshold_between_edges = self.params_specific['TH_edges'][semantic_label]
+
+
+            log_info = "using parameter for sem " + str(semantic_label) + ": " + \
+                str(break_threshold) + "  " + \
+                str(connect_threshold_label_side) + "_" + \
+                str(connect_threshold_high_label_side) + "_" + \
+                str(connect_threshold_inst_side) + "_" + \
+                str(connect_threshold_between_edges) + '\n'
+            self.log_to_file(log_info)
             breaked_labels_tuple = [] # list of tuple(seg_label, label_confidence)
             # loop over updated_segs_semantic to find semantically updated segs from regularizaiton
             updated_segs_semantic = []

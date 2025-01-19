@@ -2,17 +2,54 @@
 import sys
 import os
 import time
+import threading
 import h5py
-import re
 import numpy as np
 from scipy.spatial.transform import Slerp, Rotation
 import cv2
 from collections import Counter
+
+from semantics.pano_scannet_nyu_colormap import *
+from multiprocessing import Process
+
+import sys
+sys.path.append("/usr/lib/python3/dist-packages")
 import pcl
 
-import panoptic_mapping.utils.semantics.semantic_utils as semantic_utils
-from panoptic_mapping.utils.semantics.pano_colormap import *
-import semantic_mapping.utils.depth_seg_utils as depth_seg_utils
+def preprocess(depth_img):
+    depth_img_rescaled = None
+    if depth_img.dtype == np.uint16:
+        # convert depth image from mili-meters to meters
+        depth_img_rescaled = cv2.rgbd.rescaleDepth(depth_img, cv2.CV_32FC1)
+    elif depth_img.dtype == np.float32:
+        depth_img_rescaled = depth_img
+    else:
+        print("Unknown depth image encoding.")
+        return None
+
+    kZeroValue = 0.0
+    nan_mask = (depth_img_rescaled != depth_img_rescaled)
+    depth_img_rescaled[nan_mask] = kZeroValue # set nan pixels to 0
+
+    return depth_img_rescaled
+
+class SegmentDepthWrapper(threading.Thread):
+
+    def __init__(self, depth_segmentor, depth_img,  rgb_img):
+        threading.Thread.__init__(self)
+
+        self.depth_img_scaled = preprocess(depth_img)
+        self.depth_segmentor = depth_segmentor
+        self.rgb_img = rgb_img.astype(np.float32)
+    
+        self.depth_map = None
+        self.segment_masks_list = []
+
+    def run(self):
+        self.depth_segmentor.depthSegment(self.depth_img_scaled,
+                                          self.rgb_img)
+        self.depth_map = self.depth_segmentor.get_depthMap()
+        self.segment_masks_list = self.depth_segmentor.get_segmentMasks()
 
 class Segment:
     def __init__(self, points, is_thing, instance_label, class_label, \
@@ -95,9 +132,10 @@ class Segment:
 class SegmentsGenerator:
     def __init__(self, gsm_node, depth_segmentor, panoptic_segmentor, \
         save_resutls_img=False, img_folder = None, \
-        save_segments = False, use_segments = False, segments_folder = None):
+        save_segments = False, use_segments = False, segments_folder = None,
+        save_panoptics = False, use_panoptics = False, panoptics_folder = None,
+        save_geometrics = False, use_geometrics = False, geometrics_folder = None):
         
-        self.gsm_node = gsm_node
         self.depth_segmentor = depth_segmentor
         self.panoptic_segmentor = panoptic_segmentor
 
@@ -105,12 +143,8 @@ class SegmentsGenerator:
         self.img_folder = img_folder
         if self.save_resutls_img:
             self.semantic_folder = os.path.join(self.img_folder, 'panoptic_seg')
-            # self.depth_seg_folder = os.path.join(self.img_folder, 'depth_seg')
             if not os.path.exists(self.semantic_folder):
                 os.makedirs(self.semantic_folder)
-            # depth_seg is the same as semantic_mapping, so no need to save again
-            # if not os.path.exists(self.depth_seg_folder):
-            #     os.makedirs(self.depth_seg_folder)
 
         self.save_segments = save_segments
         self.use_segments =use_segments
@@ -120,122 +154,160 @@ class SegmentsGenerator:
                 os.makedirs(self.segments_folder)
         else:
             self.save_segments = False
+
+        self.save_panoptics = save_panoptics
+        self.use_panoptics =use_panoptics
+        self.panoptics_folder = panoptics_folder
+        if(self.save_panoptics and self.panoptics_folder is not None):
+            if not os.path.exists(self.panoptics_folder):
+                os.makedirs(self.panoptics_folder)
+        else:
+            self.save_panoptics = False
+
+        self.save_geometrics = save_geometrics
+        self.use_geometrics =use_geometrics
+        self.geometrics_folder = geometrics_folder
+        if(self.save_geometrics and self.geometrics_folder is not None):
+            if not os.path.exists(self.geometrics_folder):
+                os.makedirs(self.geometrics_folder)
+        else:
+            self.save_geometrics = False
+
         return None
 
     def Segmennt2D(self, depth_img, rgb_img, frame_i):
         result = None
+        depth_segmentor_thread = SegmentDepthWrapper(self.depth_segmentor,
+                                                      depth_img,
+                                                      rgb_img)
+        # depth segmentation subprocess
+        depth_segmentor_thread.start()
+
         # panoptic segmentation
-        panoptic_result = self.panoptic_segmentor.forward(rgb_img)
+        panoptic_result = None
+        if self.panoptic_segmentor.use_gt:
+            panoptic_result = self.panoptic_segmentor.forward(frame_i)
+        else:
+            panoptic_result = self.panoptic_segmentor.forward(rgb_img)
         if len(panoptic_result['info']) == 0:
-            return result
-        
-        # depth segmentation
-        depth_img_scaled = depth_seg_utils.preprocess(depth_img)
-        self.depth_segmentor.depthSegment(depth_img_scaled,rgb_img.astype(np.float32))
-        depth_map = self.depth_segmentor.get_depthMap()
-        # normal_map = self.depth_segmentor.get_normalMap()
-        segment_masks =  self.depth_segmentor.get_segmentMasks()
-        if len(segment_masks) == 0:
+            depth_segmentor_thread.join()
             return result
 
+        # waiting for depth seg result
+        depth_segmentor_thread.join()
+        depth_map = depth_segmentor_thread.depth_map
+        segment_masks =  depth_segmentor_thread.segment_masks_list
+        if len(segment_masks) == 0:
+            return result
         # extract instance/stuff information 
         id2info_instance = {}
         id2info_stuff = {}
         seg_map = panoptic_result['seg_map']
+
         for id_info in panoptic_result['info']:
             id = id_info['id']
             is_thing = id_info['isthing']
             if is_thing:
                 # instance
                 id2info_instance[id] = id_info
-                area = np.sum(seg_map == id)
-                id2info_instance[id]['area'] = area
-
             else:
                 # stuff
-                id2info_stuff[id] = id_info.copy()
-                id2info_stuff[id]['category_id'] += 80
-
-        if self.save_resutls_img:
-            semantic_vis = self.panoptic_segmentor.visualize(panoptic_result)
-            # label_map = self.depth_segmentor.get_labelMap()
-            panoptic_img_f = os.path.join(self.semantic_folder,str(frame_i+1)+".png")
-            # depth_seg_img_f = os.path.join(self.depth_seg_folder,str(frame_i+1)+".png")
-            cv2.imwrite(panoptic_img_f,cv2.cvtColor(semantic_vis, cv2.COLOR_RGB2BGR))
-            # cv2.imwrite(depth_seg_img_f,label_map)
+                id2info_stuff[id] = id_info
 
         result = {'seg_map': seg_map, 'id2info_instance':id2info_instance, 'id2info_stuff':id2info_stuff, \
                     'segment_masks': segment_masks, 'depth_map': depth_map}
+
+        if( self.save_panoptics and (self.panoptics_folder is not None) and
+            self.save_geometrics and (self.geometrics_folder is not None)):
+            self.save2DPanopticGeometricSegs(seg_map, panoptic_result['info'], segment_masks, frame_i)
         return result
+    
+    def save2DPanopticGeometricSegs(self, seg_map, panoptic_info, 
+                                    segment_masks, frame_i):
+        # save panoptic information
+        panoptic_mask = seg_map
+        panoptic_mask_f = os.path.join(self.panoptics_folder, str(frame_i).zfill(5)+"_mask.png")
+        cv2.imwrite(panoptic_mask_f, panoptic_mask)
 
-    def Segmennt2DRunAnalysis(self, depth_img, rgb_img, frame_i, heap_pointer):
-        result = None
-        # panoptic segmentation
-        time_start = time.time()
-        panoptic_result = self.panoptic_segmentor.forward(rgb_img)
-        if len(panoptic_result['info']) == 0:
-            return result, None, None
-        
-        # depth segmentation
-        time_dep_seg_start = time.time()
-        # memory_table_initial = heap_pointer.heap()
-        depth_img_scaled = depth_seg_utils.preprocess(depth_img)
-        self.depth_segmentor.depthSegment(depth_img_scaled,rgb_img.astype(np.float32))
-        depth_map = self.depth_segmentor.get_depthMap()
-        # normal_map = self.depth_segmentor.get_normalMap()
-        segment_masks =  self.depth_segmentor.get_segmentMasks()
-        time_dep_seg_finished = time.time()
-        # memory_table_dep_end= heap_pointer.heap()
-        
-        pattern = "Total size = (\d+) bytes"
-        # depth_seg_memory_initial = int(re.search(pattern, str(memory_table_initial[0])).group(1))
-        # depth_seg_memory_end= int(re.search(pattern, str(memory_table_dep_end[0])).group(1))
-        # depth_seg_memory = depth_seg_memory_end - depth_seg_memory_initial
-        depth_seg_memory = 0
-        if len(segment_masks) == 0:
-            return result, None, None
+        panoptic_info_dict = {
+            'ids': [sem_info['id'] for sem_info in panoptic_info],
+            "is_thing": [sem_info['isthing'] for sem_info in panoptic_info],
+            "cates": [sem_info['category_id'] for sem_info in panoptic_info],
+            "areas": [sem_info['area'] for sem_info in panoptic_info]
+        }
+        panoptic_info_f = os.path.join(self.panoptics_folder, str(frame_i).zfill(5)+"_info.h5")
+        dictToHd5(panoptic_info_f, panoptic_info_dict)
 
-        # extract instance/stuff information 
-        time_fuse1_start = time.time()
+        # save geometric information
+        geometric_seg_mask = np.zeros(panoptic_mask.shape, dtype=np.uint8)
+        for seg_idx in range(len(segment_masks)):
+            geometric_seg_mask[segment_masks[seg_idx]] = seg_idx+1
+        geometric_seg_mask_f = os.path.join(self.geometrics_folder, str(frame_i).zfill(5)+"_mask.png")
+        cv2.imwrite(geometric_seg_mask_f, geometric_seg_mask)
+
+    def load2DPanopticGeometricSegs(self, camera_K, depth_img_scaled, frame_i):
+        # load panoptic information
+        panoptic_mask_f = os.path.join(self.panoptics_folder, str(frame_i).zfill(5)+"_mask.png")
+        panoptic_info_f = os.path.join(self.panoptics_folder, str(frame_i).zfill(5)+"_info.h5")
+        if( (not os.path.isfile(panoptic_mask_f)) or 
+            (not os.path.isfile(panoptic_info_f))):
+            return None
+        panoptic_info_dict = hd5ToDict(panoptic_info_f)
         id2info_instance = {}
         id2info_stuff = {}
-        seg_map = panoptic_result['seg_map']
-        ids, areas = np.unique(seg_map, return_counts=True)
-        for id_info in panoptic_result['info']:
-            id = id_info['id']
-            is_thing = id_info['isthing']
+        for sem_idx in range(len(panoptic_info_dict['ids'])):
+            id = panoptic_info_dict['ids'][sem_idx]
+            is_thing = panoptic_info_dict['is_thing'][sem_idx]
+            sem_info = {
+                'id': id, 'isthing':is_thing, 
+                'category_id': panoptic_info_dict['cates'][sem_idx],
+                'area': panoptic_info_dict['areas'][sem_idx]
+            }
             if is_thing:
                 # instance
-                id2info_instance[id] = id_info
-                area = areas[np.where(ids == id)]
-                id2info_instance[id]['area'] = area
-
+                id2info_instance[id] = sem_info
             else:
                 # stuff
-                id2info_stuff[id] = id_info.copy()
-                id2info_stuff[id]['category_id'] += 80
-        time_fuse1_end = time.time()
-        if self.save_resutls_img:
-            semantic_vis = self.panoptic_segmentor.visualize(panoptic_result)
-            # label_map = self.depth_segmentor.get_labelMap()
-            panoptic_img_f = os.path.join(self.semantic_folder,str(frame_i+1)+".png")
-            # depth_seg_img_f = os.path.join(self.depth_seg_folder,str(frame_i+1)+".png")
-            cv2.imwrite(panoptic_img_f,cv2.cvtColor(semantic_vis, cv2.COLOR_RGB2BGR))
-            # cv2.imwrite(depth_seg_img_f,label_map)
+                id2info_stuff[id] = sem_info
+        panoptic_mask = cv2.imread(panoptic_mask_f, cv2.IMREAD_UNCHANGED)
 
-        result = {'seg_map': seg_map, 'id2info_instance':id2info_instance, 'id2info_stuff':id2info_stuff, \
-                    'segment_masks': segment_masks, 'depth_map': depth_map}
-        # time for geo_seg and panoptic seg
-        time_2d_seg = (time_dep_seg_finished-time_dep_seg_start, time_dep_seg_start-time_start, time_fuse1_end-time_fuse1_start)
-        return result, time_2d_seg, depth_seg_memory
+        # load geometric information
+        geometric_seg_mask_f = os.path.join(self.geometrics_folder, str(frame_i).zfill(5)+"_mask.png")
+        if( (not os.path.isfile(geometric_seg_mask_f)) ):
+            return None
+        geometric_seg_mask = cv2.imread(geometric_seg_mask_f, cv2.IMREAD_UNCHANGED)
 
+        segment_masks = []
+        segs_ids = np.unique(geometric_seg_mask)
+        for seg_id in segs_ids:
+            if seg_id == 0:
+                continue
+            seg_mask = np.zeros(panoptic_mask.shape, dtype=bool)
+            seg_mask[geometric_seg_mask==seg_id] = True
+            segment_masks.append(seg_mask)
+        
+        # get depth map
+        depth_map = cv2.rgbd.depthTo3d(depth=depth_img_scaled,K=camera_K)
+        result = {'seg_map': panoptic_mask, 
+                  'id2info_instance': id2info_instance, 
+                  'id2info_stuff': id2info_stuff,
+                  'segment_masks': segment_masks, 
+                  'depth_map': depth_map}
+        
+        return result
+    
     def generateSegments(self, seg_result_2D, pose, frame_i):
-        # TODEBUG
+        # get panoptic segmentation result
         segment_list = []
         segment_masks = seg_result_2D['segment_masks']
         seg_map = seg_result_2D['seg_map']
         id2info_instance = seg_result_2D['id2info_instance']
         id2info_stuff = seg_result_2D['id2info_stuff']
+        ## get panoptic seg masks
+        num_panoptic_segs = len(id2info_instance)+len(id2info_stuff)
+        panop_seg_masks = np.zeros((seg_map.shape[0], seg_map.shape[1], num_panoptic_segs+1), dtype=bool)
+        mask_idxs_2D = np.indices(seg_map.shape)
+        panop_seg_masks[mask_idxs_2D[0], mask_idxs_2D[1], seg_map] = True
 
         # generate segments candidates
         sem_depth_segments = []
@@ -247,54 +319,51 @@ class SegmentsGenerator:
             # remove small segments
             if np.sum(depth_seg_mask) < 800:
                 continue
-            depth_seg_ids = seg_map[depth_seg_mask!=0].reshape(-1)
-            depth_seg_area = depth_seg_ids.shape[0]
-            candidate_pairs = Counter(depth_seg_ids)
+            depth_sem_seg_ids = seg_map[depth_seg_mask].reshape(-1)
+            depth_seg_area = depth_sem_seg_ids.shape[0]
+            candidate_pairs = Counter(depth_sem_seg_ids)
 
             max_overlap_area = 0
             max_candidate_id = 0 
-            for id in candidate_pairs:
-                if(id == 0):
+            for panoptic_id in candidate_pairs:
+                if(panoptic_id == 0):
                     continue
-                candidate_area = candidate_pairs[id]
-                is_thing = (id in id2info_instance)
-                is_stuff = (id in id2info_stuff)
+                candidate_area = candidate_pairs[panoptic_id]
+                is_thing = (panoptic_id in id2info_instance)
+                is_stuff = (panoptic_id in id2info_stuff)
                 if is_thing:
-                    if(candidate_area>0.9*id2info_instance[id]['area'] and candidate_area<0.5*depth_seg_area):
+                    # if(candidate_area>0.9*id2info_instance[panoptic_id]['area'] and candidate_area<0.5*depth_seg_area):
+                    if(candidate_area>0.05*id2info_instance[panoptic_id]['area'] and candidate_area<0.8*depth_seg_area):
                     # if depth-undersegment, then further seg it 
-                        # save segmented instance
-                        # extracted_mask = np.zeros((y2-y1, x2-x1), dtype=bool)
-                        extracted_mask = np.logical_and(depth_seg_mask, seg_map==id)
-                        overlap_ratio = candidate_area * 1.0 / id2info_instance[id]['area']
-                        extra_instances.append({'mask': extracted_mask, 'id': id, 'is_thing': True, \
-                            'inst_score': id2info_instance[id]['score'], 'overlap_r':overlap_ratio })
-                        if np.isinf(overlap_ratio):
-                            breakpoint = None
+                        extracted_mask = np.logical_and(depth_seg_mask, panop_seg_masks[:,:,panoptic_id])
+                        overlap_ratio = candidate_area * 1.0 / id2info_instance[panoptic_id]['area']
+                        inst_score = 1.0 if is_thing else 0.5
+                        extra_instances.append({'mask': extracted_mask, 'id': panoptic_id, 'is_thing': True, \
+                            'inst_score': inst_score, 'overlap_r':overlap_ratio })
                         # further determine remaining part
                         depth_seg_area -= candidate_area
                         depth_seg_mask[extracted_mask] = False
                     else:
                         if max_overlap_area<candidate_area:
                             max_overlap_area = candidate_area
-                            max_candidate_id = id
+                            max_candidate_id = panoptic_id
                     continue
                 elif is_stuff:
                     if max_overlap_area<candidate_area:
                         max_overlap_area = candidate_area
-                        max_candidate_id = id
+                        max_candidate_id = panoptic_id
             # determine semantic label for depth_seg
             if(max_overlap_area>=0.2*depth_seg_area):
                 overlap_ratio = max_overlap_area*1.0/depth_seg_area
                 is_thing = (max_candidate_id in id2info_instance)
-                inst_score = id2info_instance[max_candidate_id]['score'] if is_thing else 0.5
+                # inst_score = id2info_instance[max_candidate_id]['score'] if is_thing else 0.5
+                inst_score = 1.0 if is_thing else 0.5
                 sem_depth_segments.append({'mask': depth_seg_mask, 'id': max_candidate_id, 'is_thing': is_thing, \
                     'inst_score': inst_score, 'overlap_r': overlap_ratio})
             else:
                 overlap_ratio = candidate_pairs[0] * 1.0 / depth_seg_area
                 background_segments.append({'mask': depth_seg_mask, 'id': 0, 'is_thing': False, 'inst_score': 0.5 \
                     , 'overlap_r': overlap_ratio})
-                if np.isinf(overlap_ratio):
-                        breakpoint = None
         # generate segments
         mask_segments_singleframe = np.zeros_like(seg_map, dtype=np.uint8)
         depth_map = seg_result_2D['depth_map']
@@ -308,7 +377,7 @@ class SegmentsGenerator:
             inst_score = info_sem_depth_seg['inst_score']
             overlap_ratio = info_sem_depth_seg['overlap_r']
             segment = Segment(points, is_thing, instance_label, semantic_label, inst_score, overlap_ratio, pose, seg_index)
-            segment.calculateConfidenceDefault()
+            # segment.calculateConfidenceDefault()
             segment_list.append(segment)
             seg_index += 1
             mask_segments_singleframe[info_sem_depth_seg['mask']] = seg_index
@@ -322,7 +391,7 @@ class SegmentsGenerator:
             inst_score = extected_instance_seg['inst_score']
             overlap_ratio = extected_instance_seg['overlap_r']
             segment = Segment(points, is_thing, instance_label, semantic_label, inst_score, overlap_ratio, pose, seg_index)
-            segment.calculateConfidenceDefault()
+            # segment.calculateConfidenceDefault()
             segment_list.append(segment)
             seg_index += 1 
             mask_segments_singleframe[extected_instance_seg['mask']] = seg_index
@@ -330,20 +399,17 @@ class SegmentsGenerator:
             points = depth_map[background_seg['mask']].astype(np.float32).reshape(-1,3)
             is_thing = background_seg['is_thing']
             instance_label = background_seg['id']
-            semantic_label = 80 # background semantic label
-            # semantic_label = semantic_id_map[semantic_label]
+            semantic_label = BackgroundSemId # background semantic label
             inst_score = background_seg['inst_score']
             overlap_ratio = background_seg['overlap_r']
             segment = Segment(points, is_thing, instance_label, semantic_label, inst_score, overlap_ratio, pose, seg_index)
-            segment.calculateConfidenceDefault()
+            # segment.calculateConfidenceDefault()
             segment_list.append(segment)
             seg_index += 1
             mask_segments_singleframe[background_seg['mask']] = seg_index
         if self.save_segments:
             mask_f = os.path.join(self.segments_folder, str(frame_i).zfill(5)+"_mask.png")
             cv2.imwrite(mask_f, mask_segments_singleframe)
-        if(len(segment_list) == 0):
-            breakpoint = None
         return segment_list
 
     def outlierRemove(self, segment_list, neighbor_dist_th = 0.05):
@@ -370,9 +436,18 @@ class SegmentsGenerator:
         # TODEBUG
         t0 = time.time()
         segment_list = []
-        seg_result_2D = self.Segmennt2D(depth_img, rgb_img, frame_i)
+
+        seg_result_2D = None
+        if self.use_panoptics and self.use_geometrics and (camera_K is not None):
+            depth_img_scaled = cv2.rgbd.rescaleDepth(depth_img, cv2.CV_32FC1)
+            seg_result_2D = self.load2DPanopticGeometricSegs(
+                camera_K, depth_img_scaled, frame_i
+            )
+        else:
+            seg_result_2D = self.Segmennt2D(depth_img, rgb_img, frame_i)
         if seg_result_2D is None:
             return segment_list # return if nothing from 2D segmentation
+        
         segment_list = self.generateSegments(seg_result_2D, pose, frame_i)
 
         # save segments information
@@ -394,51 +469,6 @@ class SegmentsGenerator:
         # self.gsm_node.outputLog("   Seg Generation in python cost %f s" %(time.time() - t0))
         return segment_list
 
-    def frameToSegmentsRunAnalysis(self, depth_img, rgb_img, pose, frame_i, heap_pointer):
-        # TODEBUG
-        segment_list = []
-
-        seg_result_2D, time_2d_segs, memory_depth_seg = \
-            self.Segmennt2DRunAnalysis(depth_img, rgb_img, frame_i, heap_pointer)
-        if seg_result_2D is None or time_2d_segs is None or memory_depth_seg is None:
-            return segment_list, None # return if nothing from 2D segmentation
-
-        pattern = "Total size = (\d+) bytes"
-        # memory_table_initial = heap_pointer.heap()
-        time_fusion_start = time.time()
-        segment_list = self.generateSegments(seg_result_2D, pose, frame_i)
-        time_fusion_end = time.time()
-        # memory_table_dep_end= heap_pointer.heap()
-        
-        # fuse2d_memory_initial = int(re.search(pattern, str(memory_table_initial[0])).group(1))
-        # fuse2d_memory_end= int(re.search(pattern, str(memory_table_dep_end[0])).group(1))
-        # fuse2d_memory = fuse2d_memory_end - fuse2d_memory_initial
-        fuse2d_memory = 0
-
-        # save segments information
-        if self.save_segments:
-            seg_info = {'is_thing':[], 'instance_label':[],'class_label':[], 'inst_confidence':[], \
-                'overlap_ratio': [], 'pose':[], 'center':[], 'seg_num':0}
-            for seg in segment_list:
-                seg_info['is_thing'].append(seg.is_thing)
-                seg_info['instance_label'].append(seg.instance_label)
-                seg_info['class_label'].append(seg.class_label)
-                seg_info['inst_confidence'].append(seg.inst_confidence)
-                seg_info['overlap_ratio'].append(seg.overlap_ratio)
-                seg_info['pose'].append(seg.pose)
-                seg_info['center'].append(seg.center)
-            seg_info['seg_num'] = len(segment_list)
-            seg_info_f = os.path.join(self.segments_folder, str(frame_i).zfill(5)+"_seg_info.h5")
-            dictToHd5(seg_info_f, seg_info)
-
-        # self.gsm_node.outputLog("   Seg Generation in python cost %f s" %(time.time() - t0))
-
-        # depth_seg time, panoptic seg time, fuse time
-        time_2d = (time_2d_segs[0], time_2d_segs[1], time_2d_segs[0] + time_fusion_end - time_fusion_start)
-        # depth_seg memory; fuse memory
-        memory_2d = (memory_depth_seg, fuse2d_memory)
-        return segment_list, (time_2d, memory_2d)
-
     def loadSegments(self, depth_scaled, camera_K, frame_i):
 
         segments_list = []
@@ -452,8 +482,6 @@ class SegmentsGenerator:
         seg_indexes = np.unique(mask)
         for seg_i in range(seg_info['seg_num']):
             seg_mask = (mask==(seg_i+1))
-            if(np.sum(seg_mask) < 100):
-                continue
             points = cv2.rgbd.depthTo3d(depth=depth_scaled,K=camera_K,mask=seg_mask.astype(np.uint8))
             is_thing = seg_info['is_thing'][seg_i]
             instance_label = seg_info['instance_label'][seg_i]
@@ -467,6 +495,8 @@ class SegmentsGenerator:
 
             segment = Segment(points, is_thing, instance_label, class_label, 
                 inst_confidence, overlap_ratio, pose, seg_i, center)
+            if(segment.points.shape[0] < 1):
+                continue
             # segment.calculateConfidenceDefault()
             segments_list.append(segment)
         return segments_list
@@ -519,29 +549,78 @@ def checkSegmentFramesEqual(segs_framesA, segs_framesB):
             return False
     return True
 
-class ScennNNDataLoader:
-    def __init__(self, dir):
+class DataLoader:
+    def __init__(self, dir, traj_filename, preload_img = False, preload_depth = False):
+        # whether to preload data into memory
+        self.preload_img = preload_img
+        self.preload_depth = preload_depth
+
+        # parse data location
         self.dir = dir
         self.depth_folder = os.path.join(self.dir, "depth")
-        self.rgb_folder = os.path.join(self.dir, "image")
         self.depth_files = os.listdir(self.depth_folder)
-        self.rgb_files = os.listdir(self.rgb_folder)
         self.depth_files.sort()
+        self.depth_indexes = [int(depth_f.split('.')[0]) for depth_f in self.depth_files]
+        self.depth_path_map = {index: os.path.join(self.depth_folder, str(index)+".png") \
+                                for index in self.depth_indexes}
+
+        self.rgb_folder = os.path.join(self.dir, "color")
+        self.rgb_files = os.listdir(self.rgb_folder)
         self.rgb_files.sort()
+        self.rgb_indexes = [int(color_f.split('.')[0]) for color_f in self.rgb_files]
+        self.rgb_path_map = {index: os.path.join(self.rgb_folder, str(index)+".jpg") \
+                                for index in self.rgb_indexes}
 
-        self.traj_f = os.path.join(self.dir, "trajectory.log")
-        self.trajectory = None
+        # load poses first
+        self.traj_f = os.path.join(self.dir, traj_filename)
         self.readTrajectory()
+        self.traj_indexes = list(self.poses.keys())
 
-        depth_index_max,depth_index_min = int(self.depth_files[-1][5:10]),int(self.depth_files[0][5:10])
-        rgb_index_max,rgb_index_min = int(self.rgb_files[-1][5:10]),int(self.rgb_files[0][5:10])
-        tra_indexes = np.array(list(self.trajectory.keys()))
-        self.index_min = max(rgb_index_min,depth_index_min,tra_indexes[0])
-        self.index_max = min(rgb_index_max,depth_index_max,tra_indexes[-1])    
+        # get frame indexs
+        self.indexes = set.intersection( set(self.depth_indexes), set(self.rgb_indexes),  set(self.traj_indexes))
+        self.indexes = list(self.indexes)
+        self.indexes.sort()
+        self.index_min = min(self.indexes)
+        self.index_max = max(self.indexes)  
+
+        # get camera matrixs
+        self.rgb_extrinsic_f = os.path.join(self.dir, "intrinsic", "extrinsic_color.txt")
+        self.rgb_intrinsic_f = os.path.join(self.dir, "intrinsic", "intrinsic_color.txt")
+        self.depth_extrinsic_f = os.path.join(self.dir, "intrinsic", "extrinsic_depth.txt")
+        self.depth_intrinsic_f = os.path.join(self.dir, "intrinsic", "intrinsic_depth.txt")
+        self.rgb_extrinsic = np.loadtxt(self.rgb_extrinsic_f)
+        self.rgb_intrinsic = np.loadtxt(self.rgb_intrinsic_f)[:3, :3]
+        self.depth_extrinsic = np.loadtxt(self.depth_extrinsic_f)
+        self.depth_intrinsic = np.loadtxt(self.depth_intrinsic_f)[:3, :3]
+        assert(np.isclose(np.eye(4), self.rgb_extrinsic).all())
+        assert(np.isclose(np.eye(4), self.depth_extrinsic).all())
+        self.homograph_color_to_depth = self.depth_intrinsic @ np.linalg.inv(self.rgb_intrinsic)
+
+        # get depth image shape 
+        depth_f = self.depth_path_map[self.indexes[0]]
+        depth_img = cv2.imread(depth_f,cv2.IMREAD_UNCHANGED)
+        self.depth_h = depth_img.shape[0]
+        self.depth_w = depth_img.shape[1]
+
+        # preload data in RAM
+        if self.preload_img:
+            self.images = {}
+            for idx in self.indexes:
+                image_f = self.rgb_path_map[idx]
+                rgb_img = cv2.imread(image_f,cv2.IMREAD_UNCHANGED)
+                rgb_img_aligned = cv2.warpPerspective(rgb_img, self.homograph_color_to_depth,
+                    (self.depth_w, self.depth_h) )
+                self.images[idx] = rgb_img_aligned
+
+        if self.preload_depth:
+            self.depths = {}
+            for idx in self.indexes:
+                depth_f = self.depth_path_map[idx]
+                depth_img = cv2.imread(depth_f,cv2.IMREAD_UNCHANGED)
+                self.depths[idx] = depth_img
 
     def readTrajectory(self):
-        self.trajectory = {}
-
+        self.poses = {}
         f = open(self.traj_f,'r')
         T_WC = []
         current_id = None
@@ -552,37 +631,99 @@ class ScennNNDataLoader:
                     T_WC = np.array(T_WC)
                     r = Rotation.from_matrix(T_WC[:3,:3])
                     T_WC[:3,:3] = r.as_matrix()
-                    self.trajectory[current_id] = np.array(T_WC).reshape(4,4)
+                    self.poses[current_id] = np.array(T_WC).reshape(4,4)
                 current_id = int(data[0])
                 T_WC = []
 
             elif(len(data) == 4):
                 T_WC.append([float(data[0]),float(data[1]),float(data[2]),float(data[3])])
+        f.close()
+
+    def getPoseFromIndex(self, index):
+        pose = self.poses[index]
+        return pose
 
     def getDataFromIndex(self, index):
-        # normally start from 1: image00001.png
-        if(index<self.index_min or index>self.index_max):
+        # normally start from 0: 0.; 0-indexed
+        if(index not in self.indexes):
             return None,None,None
-        image_f = self.rgb_files[index]
-        depth_f = self.depth_files[index]
-        image_f = os.path.join(self.rgb_folder, image_f)
-        depth_f = os.path.join(self.depth_folder, depth_f)
 
-        rgb_img = cv2.imread(image_f,cv2.IMREAD_UNCHANGED)
-        depth_img = cv2.imread(depth_f,cv2.IMREAD_UNCHANGED)
-        pose = self.trajectory[index]
-        return rgb_img, depth_img, pose.astype(np.float32)
+        rgb_img_aligned = None
+        depth_img = None
+        pose = None
+
+        if self.preload_img:
+            rgb_img_aligned = self.images[index]
+        else:
+            image_f = self.rgb_path_map[index]
+            rgb_img = cv2.imread(image_f,cv2.IMREAD_UNCHANGED)
+            rgb_img_aligned = cv2.warpPerspective(rgb_img, self.homograph_color_to_depth,
+                (self.depth_w, self.depth_h) )
+
+        if self.preload_depth:
+            depth_img = self.depths[index]
+        else:
+            depth_f = self.depth_path_map[index]
+            depth_img = cv2.imread(depth_f,cv2.IMREAD_UNCHANGED)
+        
+        pose = self.poses[index]
+        # check validity of pose
+        is_pose_valid = self.isPoseValid(pose)
+        if not is_pose_valid:
+            return None,None,None
+
+        return rgb_img_aligned, depth_img, pose.astype(np.float32)
+
+    def isPoseValid(self, pose):
+        is_nan = np.isnan(pose).any() or np.isinf(pose).any()
+        if is_nan:
+            return False
+
+        R_matrix = pose[:3, :3]
+        I = np.identity(3)
+        is_rotation_valid = ( np.isclose( np.matmul(R_matrix, R_matrix.T), I , atol=1e-3) ).all and np.isclose(np.linalg.det(R_matrix) , 1, atol=1e-3)
+        if not is_rotation_valid:
+            return False
+
+        return True
 
     def getDepthScaledFromIndex(self, index):
-        if(index<self.index_min or index>self.index_max):
+        if(index not in self.indexes):
             return None
-        depth_f = self.depth_files[index]
-        depth_f = os.path.join(self.depth_folder, depth_f)
-        depth_img = cv2.imread(depth_f,cv2.IMREAD_UNCHANGED)
-        depth_img_scaled = cv2.rgbd.rescaleDepth(depth_img, cv2.CV_32FC1)
 
+        depth_img = None
+        if self.preload_depth:
+                depth_img = self.depths[index]
+        else:
+            depth_f = self.depth_path_map[index]
+            depth_img = cv2.imread(depth_f,cv2.IMREAD_UNCHANGED)
+
+        depth_img_scaled = cv2.rgbd.rescaleDepth(depth_img, cv2.CV_32FC1)
         return depth_img_scaled
 
     def getCameraMatrix(self):
-        K = np.array([[544.47329,0,320],[0,544.47329,240],[0,0,1]])
-        return K.astype(np.float32)
+        # return depth camera matrix 
+        return self.depth_intrinsic.astype(np.float32)
+
+
+def getHostId(gpu_id):
+    HOST = str(gpu_id) + ".0.0."+str(gpu_id)
+    return HOST
+def getGpuDevice(gpu_id, gpu_num):
+    assert(gpu_id >= 0)
+    assert(gpu_num > gpu_id)
+    if(gpu_num == 1):
+        return "cuda"
+    return "cuda:"+str(gpu_id)
+def isPoseValid( pose):
+    is_nan = np.isnan(pose).any() or np.isinf(pose).any()
+    if is_nan:
+        return False
+
+    R_matrix = pose[:3, :3]
+    I = np.identity(3)
+    is_rotation_valid = ( np.isclose( np.matmul(R_matrix, R_matrix.T), I , atol=1e-3) ).all and np.isclose(np.linalg.det(R_matrix) , 1, atol=1e-3)
+    if not is_rotation_valid:
+        return False
+
+    return True

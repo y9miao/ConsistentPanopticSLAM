@@ -3,6 +3,8 @@ setup.py
 rp_server/__init__.py
 rp_server/detectron_server.py
 rp_server/detectron_wrapper.py
+rp_server/mask2former_server.py
+rp_server/mask2former_wrapper.py
 rp_server/tcp_client.py
 rp_server/tcp_server.py
 rp_server/utils.py
