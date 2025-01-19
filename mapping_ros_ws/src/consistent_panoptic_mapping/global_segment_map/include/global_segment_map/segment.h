@@ -27,7 +27,7 @@ class Segment {
     SemanticLabel semantic_label,
     Transformation& T_G_C);
 
-  Segment(){}
+  Segment() = delete;
   virtual ~Segment() = default;
 
   voxblox::Transformation T_G_C_;

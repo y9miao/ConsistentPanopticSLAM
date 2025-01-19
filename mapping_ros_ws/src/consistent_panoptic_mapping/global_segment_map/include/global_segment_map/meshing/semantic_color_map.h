@@ -12,7 +12,7 @@ namespace voxblox {
 
 class SemanticColorMap {
  public:
-  enum ClassTask { kCoco80 = 0, kNyu13, kCocoPano };
+  enum ClassTask { kCoco80 = 0, kNyu13, kCocoPano, Nyu40 };
 
   static SemanticColorMap create(const ClassTask& class_task);
 
@@ -29,6 +29,12 @@ class SemanticColorMap {
 class Nyu13ColorMap : public SemanticColorMap {
  public:
   Nyu13ColorMap();
+};
+
+// NYUv2 40 class task color coding defined in SceneNet.
+class Nyu40ColorMap : public SemanticColorMap {
+ public:
+  Nyu40ColorMap();
 };
 
 // COCO 80 class task color coding using the PASCAL VOC color map.

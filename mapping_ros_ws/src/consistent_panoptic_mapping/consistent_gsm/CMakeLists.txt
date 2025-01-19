@@ -27,11 +27,6 @@ catkin_package(
 )
 
 ##########
-# cvnp   #
-##########
-add_subdirectory(cvnp)
-
-##########
 # Pybind #
 ##########
 include_directories(cvnp)
@@ -41,14 +36,56 @@ find_package(pybind11 REQUIRED)
 # this project   #
 ##########
 include_directories(include)
+pybind11_add_module(${PROJECT_NAME} src/global_segment_map_py.cpp)
+
+##########
+# omp   #
+##########
+if(APPLE)
+  set(LLVM_PATH "/usr/local/opt/llvm")
+  find_package(LLVM HINTS ${LLVM_PATH}/lib/cmake/llvm)
+  if (LLVM_FOUND)
+    message(STATUS "Building with LLVM clang and OpenMP support.")
+    set(CMAKE_C_COMPILER ${LLVM_TOOLS_BINARY_DIR}/clang)
+    set(CMAKE_CXX_COMPILER ${LLVM_TOOLS_BINARY_DIR}/clang++)
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fopenmp -L${LLVM_PATH}/lib -Wl,-rpath,${LLVM_PATH}/lib")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fopenmp -L${LLVM_PATH}/lib -Wl,-rpath,${LLVM_PATH}/lib")
+  else()
+    message(WARNING "LLVM not found: Building without OpenMP support.")
+  endif()
+else()
+  find_package(OpenMP)
+  if(OpenMP_CXX_FOUND)
+    message(STATUS "OpenMP found: Adding OpenMP support.")
+    target_compile_options(${PROJECT_NAME} PUBLIC ${OpenMP_CXX_FLAGS})
+    target_link_libraries(${PROJECT_NAME} PUBLIC ${OpenMP_CXX_LIBRARIES})
+  else()
+    message(WARNING "OpenMP not found: Building without OpenMP support.")
+  endif()
+endif()
+
+
+##########
+# cvnp   #
+##########
+add_subdirectory(cvnp)
+
+##########
+# this project   #
+##########
+# include_directories(include)
+# pybind11_add_module(${PROJECT_NAME} src/global_segment_map_py.cpp)
 cs_add_library(${PROJECT_NAME}_LIB
   # src/segment_graph.cpp //moved to global_segment_map
+  src/SettingsSemantic.cpp
   src/segment_confidence.cpp
   src/label_tsdf_confidence_integrator.cpp
+  src/consistent_gsm_mapper.cpp
   src/utils/pcl_semantic_visualizers.cpp
 )
+target_link_libraries(${PROJECT_NAME}_LIB ${OpenMP_LIBS})
+target_compile_options(${PROJECT_NAME}_LIB PRIVATE ${OpenMP_FLAGS})
 
-pybind11_add_module(${PROJECT_NAME} src/global_segment_map_py.cpp)
 target_link_libraries(${PROJECT_NAME} PRIVATE cvnp ${catkin_LIBRARIES} ${PROJECT_NAME}_LIB)
 install(
   TARGETS ${PROJECT_NAME}
@@ -68,3 +105,12 @@ set(ENV{PYTHONPATH} ENV{PYTHONPATH} "${CATKIN_PACKAGE_LIB_DESTINATION}")
 MESSAGE(STATUS "PYTHONPATH: ${PYTHONPATH}")
 MESSAGE(STATUS "CATKIN_PACKAGE_LIB_DESTINATION: ${CATKIN_PACKAGE_LIB_DESTINATION}")
 # catkin_python_setup(PROGRAMS ${PROJECT_NAME})
+
+cs_install()
+cs_export()
+
+##########
+# naive test in compiling   #
+##########
+add_executable(hello_world src/hello_world.cpp)
+target_link_libraries(hello_world ${catkin_LIBRARIES})

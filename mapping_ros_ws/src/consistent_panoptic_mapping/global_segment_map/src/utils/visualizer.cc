@@ -1,19 +1,32 @@
 #include "global_segment_map/utils/visualizer.h"
-
+#include <experimental/filesystem>
+#include <fstream>
+#include <boost/filesystem.hpp>
 namespace voxblox {
 
 Visualizer::Visualizer(
     const std::vector<std::shared_ptr<MeshLayer>>& mesh_layers,
     bool* mesh_layer_updated, std::mutex* mesh_layer_mutex_ptr,
     std::vector<double> camera_position, std::vector<double> clip_distances,
-    bool save_visualizer_frames)
+    bool save_visualizer_frames, std::string save_folder)
     : mesh_layers_(mesh_layers),
       mesh_layer_updated_(CHECK_NOTNULL(mesh_layer_updated)),
       mesh_layer_mutex_ptr_(CHECK_NOTNULL(mesh_layer_mutex_ptr)),
       frame_count_(0u),
       camera_position_(camera_position),
       clip_distances_(clip_distances),
-      save_visualizer_frames_(save_visualizer_frames) {}
+      save_visualizer_frames_(save_visualizer_frames),
+      save_folder_(save_folder) {
+        std::vector<std::string> visual_names = {"instance", "label", "semantic"};
+        for(auto visual_name:visual_names)
+        {
+          std::string out_frame_folder = save_folder_ + "/" + visual_name;
+          // if(!std::experimental::filesystem::exists(out_frame_folder))
+          // {
+          boost::filesystem::create_directories(out_frame_folder);
+          // }
+        }
+      }
 
 // TODO(grinvalm): make it more efficient by only updating the
 // necessary polygons and not all of them each time.
@@ -41,7 +54,7 @@ void Visualizer::visualizeMesh() {
     // std::string name = "Mesh " + std::to_string(index + 1);
     std::string name = "Mesh_" + visual_names[index];
     visualizer->setWindowName(name.c_str());
-    visualizer->setBackgroundColor(255, 255, 255);
+    visualizer->setBackgroundColor(200, 200, 200);
     visualizer->initCameraParameters();
 
     if (camera_position_.size()) {
@@ -60,7 +73,7 @@ void Visualizer::visualizeMesh() {
 
   while (true) {
     for (int index = 0; index < n_visualizers; ++index) {
-      constexpr int kUpdateIntervalMs = 1000;
+      constexpr int kUpdateIntervalMs = 100;
       pcl_visualizers[index]->spinOnce(kUpdateIntervalMs);
     }
     meshes.clear();
@@ -126,7 +139,7 @@ void Visualizer::visualizeMesh() {
 
         if (save_visualizer_frames_) {
           pcl_visualizers[index]->saveScreenshot(
-              "vpp_map_" + std::to_string(index) + "/frame_" +
+              save_folder_ + "/" + visual_names[index] + "/frame_" +
               std::to_string(frame_count_) + ".png");
         }
       }

@@ -19,16 +19,32 @@ public:
         Transformation& T_G_C,
         ObjSegConfidence inst_confidence,
         ObjSegConfidence obj_seg_confidence,
-        bool is_thing);
+        bool is_thing, 
+        Label designated_label = BackgroundLabel);
+
+    SegmentConfidence(
+        const cv::Mat* points, // float
+        // const cv::Mat* geometry_confidence, //float
+        const cv::Mat* b_box, //float32
+        InstanceLabel instance_label, //uint16_t
+        SemanticLabel semantic_label, //uint8_t
+        Transformation& T_G_C,
+        float pose_confidence,
+        ObjSegConfidence inst_confidence,
+        ObjSegConfidence obj_seg_confidence,
+        bool is_thing, 
+        Label designated_label = BackgroundLabel);
 
     // currently, the size of segments are just number of points
     SegSegConfidence getSegmentSize(){
         return SegSegConfidence(points_C_.size());
     }
 
+
     ObjSegConfidence obj_seg_confidence_ = 0;
     SegSegConfidence inst_confidence_ = 0;
     SegSegConfidence seg_label_confidence_ = 0.;
+    float pose_confidence_ = 1.0;
     cv::Mat b_box_;
     bool is_thing_;
     std::vector<GeometricConfidence> geometry_confidence_;

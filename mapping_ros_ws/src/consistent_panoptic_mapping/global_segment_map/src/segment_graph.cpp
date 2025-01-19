@@ -333,12 +333,10 @@ void SegGraph::generateSemLabelConnectMap()
         const Label label = label_it->first;
         const SemanticLabel semantic_label = getSemantic(label);
         LSet connected_labels;
-
         // only consider confidence connection of determined semantic label
         SemLabelConfiMapIt label_sem_it = label_it->second.find(semantic_label);
         bool has_semantic = ( label_sem_it != label_it->second.end() ) ||
             (semantic_label == BackgroundSemLabel);
-
         CHECK_EQ(has_semantic, true);
         for(LabelConfiMapIt label_sem_label_it = label_sem_it->second.begin();
             label_sem_label_it!=label_sem_it->second.end(); label_sem_label_it++)
@@ -511,12 +509,15 @@ void SegGraph::extractInstances()
 }
 LSet SegGraph::getAllLabels()
 {
+    LOG(INFO) << "          getAllLabels STEP1; seg_graph_confidence_map_.SIZE(): "
+        << int(seg_graph_confidence_map_.size());
     LSet labels;
     for(LabelSemLabelConfiMapIt label_it = seg_graph_confidence_map_.begin();
         label_it != seg_graph_confidence_map_.end(); label_it++)
     {
         labels.insert(label_it->first);
     }
+    LOG(INFO) << "          getAllLabels STEP2";
     return labels;
 }
 

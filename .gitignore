@@ -4,6 +4,7 @@
 **/build
 **/bin
 **/lib
+**/.catkin_tools
 
 # vscode
 **/.vscode
@@ -17,4 +18,7 @@
 *.lo
 *.o
 *.obj
+
+# test
+**/test
 

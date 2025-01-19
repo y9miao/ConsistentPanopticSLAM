@@ -299,7 +299,7 @@ InstanceLabel SemanticInstanceLabelFusion::getInstanceLabel(
   InstanceLabel instance_label = BackgroundLabel;
 
   // LOG(INFO) << "  getInstanceLabel: ";
-  if(inst_association_ == 1 || inst_association_ == 4) //use_sem_inst_confidence_
+  if(inst_association_ == 1 || inst_association_ == 4 || inst_association_ == 6 || inst_association_ == 7) //use_sem_inst_confidence_
   {
     // get semantic first
     SegmentObserveConfidence semantic_prob = 0.;

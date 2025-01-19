@@ -1,4 +1,4 @@
-#include "global_segment_map_py/global_segment_map_py.h"
+#include "consistent_mapping/global_segment_map_py.h"
 #include <global_segment_map/common.h>
 #include <opencv2/core/eigen.hpp>
 #include<opencv2/opencv.hpp>
@@ -59,7 +59,6 @@ GlobalSegmentMap_py::GlobalSegmentMap_py(std::string log_file, std::string task,
     map_config_.connection_ratio_th = connection_ratio_th_;
     map_.reset(new LabelTsdfMap(map_config_));
 
-
     // Determine TSDF Label integrator parameters.
     // TSDF
     tsdf_integrator_config_.voxel_carving_enabled = false;
@@ -75,8 +74,12 @@ GlobalSegmentMap_py::GlobalSegmentMap_py(std::string log_file, std::string task,
         label_tsdf_integrator_config_.merging_min_overlap_ratio = 0.1; // TODO yaml
     else
         label_tsdf_integrator_config_.merging_min_overlap_ratio = 0.15; // TODO yaml
-    label_tsdf_integrator_config_.merging_min_frame_count = 2; // TODO yaml
+    label_tsdf_integrator_config_.merging_min_frame_count = 10; // TODO yaml
     label_tsdf_integrator_config_.enable_semantic_instance_segmentation = true; // TODO yaml
+    label_tsdf_integrator_config_.label_register_min_overlap_ratio = 0.0;
+    if(data_association_ == 4){
+      label_tsdf_integrator_config_.enable_pairwise_confidence_merging = false;
+    }
     // Task
     std::string class_task = task_;
     if (class_task.compare("coco80") == 0) {
@@ -84,17 +87,22 @@ GlobalSegmentMap_py::GlobalSegmentMap_py(std::string log_file, std::string task,
         BackgroundSemLabel = 0u;
     } else if (class_task.compare("nyu13") == 0) {
         label_tsdf_mesh_config_.class_task = SemanticColorMap::ClassTask ::kNyu13;
-    } else if (class_task.compare("cocoPano") == 0) {
+    } else if (class_task.compare("Nyu40") == 0) {
+        label_tsdf_mesh_config_.class_task = SemanticColorMap::ClassTask ::Nyu40;
+        BackgroundSemLabel = 0u;
+    }else if (class_task.compare("cocoPano") == 0) {
         BackgroundSemLabel = 80;
         label_tsdf_mesh_config_.class_task = SemanticColorMap::ClassTask ::kCocoPano;
     } else {
         
         label_tsdf_mesh_config_.class_task = SemanticColorMap::ClassTask::kCoco80;
     }
+
     integrator_.reset(new LabelTsdfConfidenceIntegrator(
       tsdf_integrator_config_, label_tsdf_integrator_config_, map_.get()
         ,use_geo_confidence_, use_label_confidence_, inst_association_, 
         data_association_, seg_graph_confidence_));
+    integrator_->InitMetaSemantics(class_task);
 
     // mesh layer and integrator settings.
     // mesh_merged_layer_.reset(new MeshLayer(map_->block_size()));
@@ -148,7 +156,7 @@ GlobalSegmentMap_py::GlobalSegmentMap_py(std::string log_file, std::string task,
     LOG(INFO) << "  data association: " << integrator_->data_association_;
     LOG(INFO) << "  seg_graph_confidence: " << seg_graph_confidence_;
     LOG(INFO) << "  seg_graph_confidence: " << integrator_->seg_graph_confidence_;
-    if( inst_association_ == 3 || inst_association_ == 4)
+    if( inst_association_ == 3 || inst_association_ == 4 || inst_association == 6 || inst_association == 7)
     {
       integrator_->semantic_instance_label_fusion_ptr_->initSegGraph();
       LOG(INFO) << "  use_inst_label_connect: " << use_inst_label_connect_;
@@ -160,16 +168,16 @@ GlobalSegmentMap_py::GlobalSegmentMap_py(std::string log_file, std::string task,
     }
     // visualizer 
     std::vector<double> camera_position = {
-        -1.41162,    6.28602,   -0.300336,
-        -1.49346,    0.117437,   0.0843885,
-        0.0165199, -0.0624571, -0.997911}; // TODO yaml
+        4,    4,   8,
+        4,    4,   0,
+        0.64278761, 0.76604444, 0}; // TODO yaml
     std::vector<double> clip_distances = {0.1, 8.86051}; // TODO yaml
     // std::vector<double> clip_distances = {1.79126, 8.86051}; // TODO yaml
     double update_mesh_every_n_sec = 0.0;
 
-    bool save_visualizer_frames = false;
+    bool save_visualizer_frames = true;
     visualizer_mesh_ = std::make_shared< Visualizer >(mesh_layers, &mesh_layer_updated_, &mesh_layer_mutex_,
-        camera_position, clip_distances, save_visualizer_frames);
+        camera_position, clip_distances, save_visualizer_frames, log_file_);
     visualizer_pcl_ = std::make_shared< PCLSemVisualizer >(
         visualizer_config_, map_.get(), camera_position, clip_distances);
     if(debug_)
@@ -190,7 +198,8 @@ void GlobalSegmentMap_py::insertSegments(
         ObjSegConfidence inst_confidence,
         ObjSegConfidence obj_seg_confidence,
         pybind11::array &T_G_C,
-        bool is_thing){
+        bool is_thing,
+        Label desginated_label){
     // LOG(INFO) << "  Memory usage before insertSegments: " << getValue() << " kB";
     cv::Mat T_G_C_mat = cvnp::nparray_to_mat(T_G_C);
     Eigen::Matrix<float, 4, 4> T_G_C_eigen;
@@ -203,7 +212,8 @@ void GlobalSegmentMap_py::insertSegments(
     cv::Mat b_box_mat = cvnp::nparray_to_mat(b_box);
     Segment* segment = nullptr;
     segment = new SegmentConfidence(&points_mat, &b_box_mat, 
-      instance_label, semantic_label, T_G_C_voxblox, inst_confidence, obj_seg_confidence, is_thing);
+      instance_label, semantic_label, T_G_C_voxblox, 
+      inst_confidence, obj_seg_confidence, is_thing, desginated_label);
     // if(instance_label!=0)
     //   LOG(INFO) <<  "   New segment sem " << int(segment->semantic_label_) << " inst " 
     //   << int(segment->instance_label_);
@@ -212,6 +222,42 @@ void GlobalSegmentMap_py::insertSegments(
     // LOG(INFO) << "  Memory usage after insertSegments: " << getValue() << " kB";
 }
 
+void GlobalSegmentMap_py::insertSegmentsPoseConfidence(
+        pybind11::array& points, // float
+        // pybind11::array& colors, // rgba uint8_t
+        // pybind11::array& geometry_confidence, //float
+        pybind11::array& b_box, //float
+        InstanceLabel instance_label, //uint16_t
+        SemanticLabel semantic_label, //uint8_t
+        ObjSegConfidence inst_confidence,
+        ObjSegConfidence obj_seg_confidence,
+        pybind11::array &T_G_C,
+        float pose_confidence,
+        bool is_thing,
+        Label desginated_label){
+    // LOG(INFO) << "  Memory usage before insertSegments: " << getValue() << " kB";
+    cv::Mat T_G_C_mat = cvnp::nparray_to_mat(T_G_C);
+    Eigen::Matrix<float, 4, 4> T_G_C_eigen;
+    cv::cv2eigen(T_G_C_mat, T_G_C_eigen);
+    Transformation T_G_C_voxblox(T_G_C_eigen);
+
+    cv::Mat points_mat = cvnp::nparray_to_mat(points);
+    // cv::Mat colors_mat = cvnp::nparray_to_mat(colors);
+    // cv::Mat geometry_confidence_mat = cvnp::nparray_to_mat(geometry_confidence);
+    cv::Mat b_box_mat = cvnp::nparray_to_mat(b_box);
+    Segment* segment = nullptr;
+    segment = new SegmentConfidence(&points_mat, &b_box_mat, 
+      instance_label, semantic_label, T_G_C_voxblox, pose_confidence,
+      inst_confidence, obj_seg_confidence, is_thing, desginated_label);
+    // if(instance_label!=0)
+    //   LOG(INFO) <<  "   New segment sem " << int(segment->semantic_label_) << " inst " 
+    //   << int(segment->instance_label_);
+    // CHECK_NOTNULL(segment);
+    segments_to_integrate_.push_back(segment);
+    // LOG(INFO) << "  Memory usage after insertSegments: " << getValue() << " kB";
+}
+
+
 bool GlobalSegmentMap_py::integrateFrame()
 {
   bool whether_merge_alias = false;
@@ -219,39 +265,53 @@ bool GlobalSegmentMap_py::integrateFrame()
   LOG(INFO) << "  Memory usage before integrateFrame: " << getValue() << " kB";
 
   auto time_start = std::chrono::system_clock::now();
-  for (Segment* segment : segments_to_integrate_) {
+
+  if(data_association_ == 5)
+  {
+    std::set<Segment*, SegmentConfidence::PtrCompare> labelled_segments;
+    // use designated superpoint id directly from instance label
+    for (Segment* segment : segments_to_integrate_) {
+      labelled_segments.insert(segment);
+    }
+    integrator_->updateInstanceConfidence(&labelled_segments);
+  }
+  else
+  {
+    for (Segment* segment : segments_to_integrate_) {
+      
+      integrator_->computeSegmentLabelCandidatesConfidence(
+          segment, &segment_label_candidates, &segment_merge_candidates_);
+    }
+    auto time_end = std::chrono::system_clock::now();
+    auto duration = std::chrono::duration<double>(time_end-time_start).count();
+    LOG(INFO) << "  computeSegmentLabelCandidatesConfidence cost: " << duration << " seconds";
+    // LOG(INFO) << "  Confidence candidate. ";
+    // for (auto label_it = segment_label_candidates.begin(); 
+    //         label_it != segment_label_candidates.end();++label_it) {
+    //         for (auto segment_it = label_it->second.begin();
+    //             segment_it != label_it->second.end(); segment_it++) {
+    //         LOG(INFO) << "    Label " << label_it->first << " - seg.size " 
+    //           << (segment_it->first)->points_C_.size() << " - confi " << segment_it->second;
+    //     }
+    // }
+
+    // true in default
     
-    integrator_->computeSegmentLabelCandidatesConfidence(
-        segment, &segment_label_candidates, &segment_merge_candidates_);
-  }
-  auto time_end = std::chrono::system_clock::now();
-  auto duration = std::chrono::duration<double>(time_end-time_start).count();
-  LOG(INFO) << "  computeSegmentLabelCandidatesConfidence cost: " << duration << " seconds";
-  // LOG(INFO) << "  Confidence candidate. ";
-  // for (auto label_it = segment_label_candidates.begin(); 
-  //         label_it != segment_label_candidates.end();++label_it) {
-  //         for (auto segment_it = label_it->second.begin();
-  //             segment_it != label_it->second.end(); segment_it++) {
-  //         LOG(INFO) << "    Label " << label_it->first << " - seg.size " 
-  //           << (segment_it->first)->points_C_.size() << " - confi " << segment_it->second;
-  //     }
-  // }
+    if (use_label_propagation_) {
+      time_start = std::chrono::system_clock::now();
+      integrator_->decideLabelPointCloudsConfidence(&segments_to_integrate_,
+                                          &segment_label_candidates,
+                                          &segment_merge_candidates_);
 
-  // true in default
-  
-  if (use_label_propagation_) {
-    time_start = std::chrono::system_clock::now();
-    integrator_->decideLabelPointCloudsConfidence(&segments_to_integrate_,
-                                        &segment_label_candidates,
-                                        &segment_merge_candidates_);
-
-    time_end = std::chrono::system_clock::now();
-    duration = std::chrono::duration<double>(time_end-time_start).count();
-    LOG(INFO) << "  decideLabelPointCloudsConfidence cost: " << duration << " seconds";
-    // LOG_EVERY_N(INFO, 1) << "  Decided labels for " << segments_to_integrate_.size()
-    //     << std::fixed << std::setprecision(4)
-    //     << " pointclouds in " << duration << " seconds.";
+      time_end = std::chrono::system_clock::now();
+      duration = std::chrono::duration<double>(time_end-time_start).count();
+      LOG(INFO) << "  decideLabelPointCloudsConfidence cost: " << duration << " seconds";
+      // LOG_EVERY_N(INFO, 1) << "  Decided labels for " << segments_to_integrate_.size()
+      //     << std::fixed << std::setprecision(4)
+      //     << " pointclouds in " << duration << " seconds.";
+    }
   }
+
   constexpr bool kIsFreespacePointcloud = false;
   Transformation T_G_C = segments_to_integrate_.at(0)->T_G_C_;
 
@@ -275,6 +335,9 @@ bool GlobalSegmentMap_py::integrateFrame()
         segment->colors_, segment->label_,
         kIsFreespacePointcloud); // TODO for confidence  
 
+      // LOG(INFO) << "Integrate segment " << int(segment->label_) << " with confidence " 
+      //   <<  dynamic_cast<SegmentConfidence*>(segment)->seg_label_confidence_;
+
       // LOG_EVERY_N(INFO, 100) << "    segments n." << seg_count++ << " with " 
       //   << segment->points_C_.size() << " points"; 
       // if(segment->instance_label_!=0)
@@ -294,13 +357,13 @@ bool GlobalSegmentMap_py::integrateFrame()
     // LOG_EVERY_N(INFO, 1) << "  Integrated " << segments_to_integrate_.size()
     //     << " pointclouds in " << duration << " secs. ";
 
-    // LOG_EVERY_N(INFO, 1) << "  The map contains "
-    //     << map_->getTsdfLayerPtr()->getNumberOfAllocatedBlocks()
-    //     << " tsdf and "
-    //     << map_->getLabelLayerPtr()->getNumberOfAllocatedBlocks()
-    //     << " label blocks.";
+    LOG_EVERY_N(INFO, 1) << "  The map contains "
+        << map_->getTsdfLayerPtr()->getNumberOfAllocatedBlocks()
+        << " tsdf and "
+        << map_->getLabelLayerPtr()->getNumberOfAllocatedBlocks()
+        << " label blocks.";
     
-    // LOG(INFO) << "  Check for label merge";
+    
     if(data_association_!=0)
       {whether_merge_alias = integrator_->mergeLabelConfidence(&merges_to_publish_);}
     else
@@ -436,7 +499,8 @@ void GlobalSegmentMap_py::LogLabelInformation()
     integrator_->semantic_instance_label_fusion_ptr_;
   LOG(ERROR) << "Log Label Information: "; 
 
-  if(inst_association_ == 3 || inst_association_ == 4)
+  if(inst_association_ == 3 || inst_association_ == 4 || inst_association_ == 6 ||
+    inst_association_ == 7 )
   {
     for(auto label_it = log_semantic_instance_label_fusion_ptr_->label_frames_count_.begin();
         label_it!=log_semantic_instance_label_fusion_ptr_->label_frames_count_.end(); label_it++)
@@ -541,6 +605,59 @@ void GlobalSegmentMap_py::LogLabelInitialGuess(std::string log_path)
   }
 }
 
+void GlobalSegmentMap_py::initializeCameraRayCaster(
+    pybind11::array &camera_K, int img_height, 
+    int img_width, float range_min, 
+    float range_max, int thread_num)
+{
+    if(camera_ray_generaor_ == nullptr)
+    {
+      cv::Mat camera_K_mat = cvnp::nparray_to_mat(camera_K);
+      camera_ray_generaor_ = new CameraRayGenerator(
+        camera_K_mat, img_height, img_width, 
+        range_min, range_max, thread_num);
+    }
+}
+void GlobalSegmentMap_py::raycastPanopticPredictions(
+    pybind11::array &T_G_C,  // float
+    pybind11::array& panoptic_mask,  // uint8_t
+    pybind11::array& inst_sem_labels, // uint8_t
+    pybind11::array& depth_img_scaled, // float
+    const float search_length, 
+    float pose_confidence = 1.0) 
+{
+  cv::Mat T_G_C_mat = cvnp::nparray_to_mat(T_G_C);
+  Eigen::Matrix<float, 4, 4> T_G_C_eigen;
+  cv::cv2eigen(T_G_C_mat, T_G_C_eigen);
+  Transformation T_G_C_voxblox(T_G_C_eigen);
+
+  cv::Mat panoptic_mask_mat = cvnp::nparray_to_mat(panoptic_mask);
+  cv::Mat depth_img_scaled_mat = cvnp::nparray_to_mat(depth_img_scaled);
+
+  std::map<InstanceLabel, SemanticLabel> inst_sem_map;
+  int num_inst_labels = inst_sem_labels.shape()[0];
+  // LOG(INFO) << "    inst_sem_map: ";
+  for(int inst_i=0; inst_i<num_inst_labels; inst_i++)
+  {
+    inst_sem_map[inst_i+1] = ((uint8_t *)inst_sem_labels.data())[inst_i];
+    // LOG(INFO) << "    panoptic id " << int(inst_i+1) << " ; sem: " << int( inst_sem_map[inst_i+1]);
+  }
+  std::map<Label, std::map<InstanceLabel, int>> label_instances_cout;
+  auto time_start = std::chrono::system_clock::now();
+  assert((inst_association_ == 6) || (inst_association_ == 7));
+  if(inst_association_ == 6)
+    integrator_->raycastPanopticPredictions(T_G_C_voxblox, panoptic_mask_mat,
+      inst_sem_map, depth_img_scaled_mat, search_length,
+      camera_ray_generaor_, label_instances_cout);
+  else
+    integrator_->raycastPanopticPredictions(T_G_C_voxblox, panoptic_mask_mat,
+      inst_sem_map, depth_img_scaled_mat, search_length,
+      camera_ray_generaor_, label_instances_cout, pose_confidence);
+  auto time_end = std::chrono::system_clock::now();
+  auto duration = std::chrono::duration<double>(time_end-time_start).count();
+  LOG(INFO) << "  ray cast cost: " << duration << " seconds";
+}
+
 void GlobalSegmentMap_py::outputLog(std::string log_info)
 {
   LOG(INFO) << log_info;
@@ -552,6 +669,7 @@ PYBIND11_MODULE(consistent_gsm, m) {
     pybind11::class_<GlobalSegmentMap_py>(m, "GlobalSegmentMap_py")
         .def(pybind11::init<std::string, std::string, bool, bool, int, int, int, bool, int, bool, float>())
         .def("insertSegments", &GlobalSegmentMap_py::insertSegments)
+        .def("insertSegmentsPoseConfidence", &GlobalSegmentMap_py::insertSegmentsPoseConfidence)
         .def("integrateFrame", &GlobalSegmentMap_py::integrateFrame)
         .def("LogSegmentsLabels", &GlobalSegmentMap_py::LogSegmentsLabels)
         .def("clearTemporaryMemory", &GlobalSegmentMap_py::clearTemporaryMemory)
@@ -560,5 +678,7 @@ PYBIND11_MODULE(consistent_gsm, m) {
         .def("updateVisualization", &GlobalSegmentMap_py::updateVisualization)
         .def("updateVisualizationPCL", &GlobalSegmentMap_py::updateVisualizationPCL)
         .def("LogLabelInformation", &GlobalSegmentMap_py::LogLabelInformation)
-        .def("LogMeshColors", &GlobalSegmentMap_py::LogMeshColors);
+        .def("LogMeshColors", &GlobalSegmentMap_py::LogMeshColors)
+        .def("initializeCameraRayCaster", &GlobalSegmentMap_py::initializeCameraRayCaster)
+        .def("raycastPanopticPredictions", &GlobalSegmentMap_py::raycastPanopticPredictions);
 }

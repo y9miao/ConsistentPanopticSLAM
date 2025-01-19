@@ -42,6 +42,7 @@ struct SurfaceNormalParams {
     }
   }
   size_t window_size = 13u;
+  // size_t window_size = 21u;
   SurfaceNormalEstimationMethod method =
       SurfaceNormalEstimationMethod::kDepthWindowFilter;
   bool display = false;
@@ -70,6 +71,9 @@ struct DepthDiscontinuityMapParams {
   bool use_discontinuity = true;
   size_t kernel_size = 3u;
   double discontinuity_ratio = 0.01;
+  double depth_pow = 1.0;
+  // double discontinuity_ratio = 0.012;
+  // double depth_pow = 1.4;
   bool display = false;
 };
 
@@ -83,6 +87,8 @@ struct MinConvexityMapParams {
   bool use_morphological_opening = true;
   bool use_threshold = true;
   double threshold = 0.97;
+  double th_depth = 1.5;
+  double th_depth_pow = 0.3;
   double mask_threshold = -0.0005;
 };
 

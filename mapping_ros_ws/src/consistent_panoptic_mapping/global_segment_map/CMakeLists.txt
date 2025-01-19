@@ -8,6 +8,8 @@ endif()
 find_package(catkin_simple REQUIRED)
 catkin_simple(ALL_DEPS_REQUIRED)
 find_package(opencv3_catkin REQUIRED)
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -lstdc++fs")
+
 
 include_directories(include ${catkin_INCLUDE_DIRS} )
 message(STATUS "OPENCV3_CATKIN_INCLUDE: ${OPENCV3_CATKIN_INCLUDE}")

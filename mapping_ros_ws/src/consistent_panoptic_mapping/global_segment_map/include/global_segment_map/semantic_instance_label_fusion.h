@@ -59,6 +59,10 @@ class SemanticInstanceLabelFusion {
         const std::vector<ObjSegConfidence>& labels_confidence, const SemanticLabel& semantic_label );
   void insertInstanceToSegGraph(const std::vector<Label>& labels_vector, 
         LLConfidenceMap& labels_confidence_map, const SemanticLabel& semantic_label, bool is_thing);
+  void increaseSegGraphConfidence(const Label& label_a, const SemanticLabel& semantic_label, 
+          const Label& label_b, const ObjSegConfidence& confidence)
+      { seg_graph_ptr_->increaseConfidenceMapUnit(label_a, semantic_label,label_b, confidence);}
+
   void logSegGraphInfo(std::string log_path);
   void checkLabelInFrameCount();
   void logAllLabels();

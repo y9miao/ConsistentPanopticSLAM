@@ -7,6 +7,8 @@ SemanticColorMap SemanticColorMap::create(const ClassTask& class_task) {
       return CocoColorMap();
     case kNyu13:
       return Nyu13ColorMap();
+    case Nyu40:
+      return Nyu40ColorMap();
     case kCocoPano:
       return CocoPanoColorMap();
   }
@@ -38,6 +40,50 @@ Nyu13ColorMap::Nyu13ColorMap()
                         {255, 215, 0},      // TV
                         {150, 150, 150},    // Wall
                         {0, 255, 255}}) {}  // Window
+
+// NYUv2 40 class task color coding defined in SceneNet.
+Nyu40ColorMap::Nyu40ColorMap()
+    : SemanticColorMap({ {120, 120, 120 },
+    {180, 120, 120 },
+    {6, 230, 230 },
+    {80, 50, 50 },
+    {4, 200, 3 },
+    {120, 120, 80 },
+    {140, 140, 140 },
+    {204, 5, 255 },
+    {230, 230, 230 },
+    {4, 250, 7 },
+    {224, 5, 255 },
+    {235, 255, 7 },
+    {150, 5, 61 },
+    {120, 120, 70 },
+    {8, 255, 51 },
+    {255, 6, 82 },
+    {143, 255, 140 },
+    {204, 255, 4 },
+    {255, 51, 7 },
+    {204, 70, 3 },
+    {0, 102, 200 },
+    {61, 230, 250 },
+    {255, 6, 51 },
+    {11, 102, 255 },
+    {255, 7, 71 },
+    {255, 9, 224 },
+    {9, 7, 230 },
+    {220, 220, 220 },
+    {255, 9, 92 },
+    {112, 9, 255 },
+    {8, 255, 214 },
+    {7, 255, 224 },
+    {255, 184, 6 },
+    {10, 255, 71 },
+    {255, 41, 10 },
+    {7, 255, 255 },
+    {224, 255, 8 },
+    {102, 8, 255 },
+    {255, 61, 6 },
+    {255, 194, 7 },
+    {255, 122, 8} }) {} 
 
 // COCO 80 class task color coding using the PASCAL VOC color map.
 CocoColorMap::CocoColorMap()

@@ -40,6 +40,7 @@ class LabelTsdfIntegrator : public MergedTsdfIntegrator {
     // Pairwise confidence-based segment merging logic.
     bool enable_pairwise_confidence_merging = true;
     float merging_min_overlap_ratio = 0.2f;
+    float label_register_min_overlap_ratio = 0.0f;
     int merging_min_frame_count = 30;
 
     // Semantic instance-aware segmentation.
@@ -95,6 +96,11 @@ class LabelTsdfIntegrator : public MergedTsdfIntegrator {
 SemanticInstanceLabelFusion* semantic_instance_label_fusion_ptr_;
 // Pairwise confidence merging.
 LLMap pairwise_confidence_;
+
+// Label layer.
+LabelTsdfConfig label_tsdf_config_;
+Layer<LabelVoxel>* label_layer_;
+
  protected:
   // Label propagation.
   // Fetch the next segment label pair which has overall
@@ -209,10 +215,6 @@ LLMap pairwise_confidence_;
              std::numeric_limits<unsigned short>::max());
     return ++(*highest_instance_ptr_);
   }
-
-  // Label layer.
-  LabelTsdfConfig label_tsdf_config_;
-  Layer<LabelVoxel>* label_layer_;
 
   // Temporary block storage, used to hold blocks that need to be created
   // while integrating a new pointcloud.

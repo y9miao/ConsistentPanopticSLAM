@@ -1,7 +1,7 @@
 #ifndef GLOBAL_SEGMENT_MAP_PY_H_
 #define GLOBAL_SEGMENT_MAP_PY_H_
 
-// #include "global_segment_map_py/common.h"
+// #include "consistent_mapping/common.h"
 #include <pybind11/pybind11.h>
 #include <pybind11/numpy.h>
 #include <pybind11/eigen.h>
@@ -18,9 +18,9 @@
 #include <glog/logging.h>
 #include <glog/log_severity.h>
 
-#include "global_segment_map_py/label_tsdf_confidence_integrator.h"
-#include <global_segment_map_py/segment_confidence.h>
-#include <global_segment_map_py/virtual_memory_log.h>
+#include "consistent_mapping/label_tsdf_confidence_integrator.h"
+#include <consistent_mapping/segment_confidence.h>
+#include <consistent_mapping/virtual_memory_log.h>
 #include "utils/pcl_semantic_visualizers.h"
 #include <global_segment_map_node/controller.h>
 #include <global_segment_map_node/conversions.h>
@@ -35,6 +35,8 @@
 #include <global_segment_map/utils/file_utils.h>
 #include <global_segment_map/utils/map_utils.h>
 #include <global_segment_map/utils/visualizer.h>
+
+#include <utils/camera_ray_generator.h>
 
 #include <voxblox_ros/conversions.h>
 #include <voxblox/alignment/icp.h>
@@ -69,6 +71,10 @@ GlobalSegmentMap_py(std::string log_file, std::string task = "coco80",
         viz_mesh_thread_.join(); 
         // viz_pcl_thread_.join();
     }    
+    if(camera_ray_generaor_)
+    {
+        delete camera_ray_generaor_;
+    }
 }
 
 void insertSegments(
@@ -81,7 +87,21 @@ void insertSegments(
         ObjSegConfidence inst_confidence,
         ObjSegConfidence obj_seg_confidence,
         pybind11::array &T_G_C,
-        bool is_thing);
+        bool is_thing,
+        Label desginated_label = BackgroundLabel);
+void insertSegmentsPoseConfidence(
+        pybind11::array& points, // float
+        // pybind11::array& colors, // rgba uint8_t
+        // pybind11::array& geometry_confidence, //float
+        pybind11::array& b_box, //float
+        InstanceLabel instance_label, //uint16_t
+        SemanticLabel semantic_label, //uint8_t
+        ObjSegConfidence inst_confidence,
+        ObjSegConfidence obj_seg_confidence,
+        pybind11::array &T_G_C,
+        float pose_confidence,
+        bool is_thing,
+        Label desginated_label = BackgroundLabel);
 
 bool integrateFrame();
 
@@ -99,6 +119,17 @@ void LogMeshColors();
 void LogLabelInitialGuess(std::string log_path);
 
 void outputLog(std::string log_info);
+
+void initializeCameraRayCaster(pybind11::array &camera_K, 
+    int img_height, int img_width, float range_min, 
+    float range_max, int thread_num = 1);
+void raycastPanopticPredictions(
+    pybind11::array &T_G_C, 
+    pybind11::array& panoptic_mask,
+    pybind11::array& inst_sem_labels,
+    pybind11::array& depth_img_scaled,
+    const float search_length,
+    float pose_confidence);
 
 private:
     std::string log_file_; // log file path
@@ -159,6 +190,9 @@ private:
     std::shared_ptr<MeshLabelIntegrator> mesh_instance_integrator_;
     std::shared_ptr<MeshLabelIntegrator> mesh_merged_integrator_;
     std::shared_ptr<MeshLabelIntegrator> mesh_confidence_integrator_;
+
+    /* ray caster*/
+    CameraRayGenerator* camera_ray_generaor_ = nullptr;
 
     /* visualiz*/
     PCLSemVisualizerConfig visualizer_config_;

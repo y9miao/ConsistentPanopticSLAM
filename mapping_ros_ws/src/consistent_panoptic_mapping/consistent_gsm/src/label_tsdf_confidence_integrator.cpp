@@ -1,4 +1,4 @@
-#include "global_segment_map_py/label_tsdf_confidence_integrator.h"
+#include "consistent_mapping/label_tsdf_confidence_integrator.h"
 #include <algorithm>
 
 namespace voxblox {
@@ -517,7 +517,6 @@ void LabelTsdfConfidenceIntegrator::decideLabelPointCloudsConfidence(
 
     
     SegSegConfidence cur_pair_confidence = 0;
-    // LOG(INFO) << "  Seg-Label Matching..." ;
     while (getNextSegmentLabelPairWithConfidence(labelled_segments, &assigned_labels,
         candidates_confidence, segment_merge_candidates, &pair, &cur_pair_confidence))
     {
@@ -532,7 +531,6 @@ void LabelTsdfConfidenceIntegrator::decideLabelPointCloudsConfidence(
         // LOG(INFO) << "      Found pair:  Seg size. "<< segment->points_C_.size() << " - addr: "<< (segment) << "- Label: " << label;
         // LOG(INFO) << "      Found pair:  Seg size. "<< segment->points_C_.size() << " - confidence: "<< (cur_pair_confidence) << "- Label: " << label;
     }
-
     for (auto merge_candidates : *segment_merge_candidates) {
         // increasePairwiseConfidenceCountSemantics(merge_candidates.second);
         increasePairwiseConfidenceCount(merge_candidates.second);
@@ -551,7 +549,6 @@ void LabelTsdfConfidenceIntegrator::decideLabelPointCloudsConfidence(
         }
   
     }
-
     
   auto time_start = std::chrono::system_clock::now();
 
@@ -580,6 +577,7 @@ void LabelTsdfConfidenceIntegrator::decideLabelPointCloudsConfidence(
             IncreaseSegGraphConfidence(&labelled_segments);
             
         }
+        else if (inst_association_ == 6 || inst_association_ == 7){} // update label-semantic-instance during raycast of panoptic mask
         else{
             // original associaiton
             IncreaseLabelInstanceMapCount(&labelled_segments);
@@ -588,8 +586,41 @@ void LabelTsdfConfidenceIntegrator::decideLabelPointCloudsConfidence(
     }
     auto time_end = std::chrono::system_clock::now();
     auto duration = std::chrono::duration<double>(time_end-time_start).count();
-    LOG(INFO) << "  updateLabelInstanceClassConfidence&SegmentGraph cost: " << duration << " seconds";
+}
 
+void LabelTsdfConfidenceIntegrator::updateInstanceConfidence(
+    std::set<Segment*, SegmentConfidence::PtrCompare>* labelled_segments)
+{
+    if (label_tsdf_config_.enable_semantic_instance_segmentation) 
+    {
+        if(inst_association_ == 1){
+            // LOG(INFO) << "  updateLabelClassInstanceConfidence";
+            updateLabelClassInstanceConfidence(labelled_segments);
+        }
+        else if (inst_association_ == 2)
+        {
+            // LOG(INFO) << "  updateLabelInstanceClassConfidence";
+            updateLabelInstanceClassConfidence(labelled_segments);
+        }
+        else if (inst_association_ == 3)
+        {
+            // LOG(INFO) << "  updateSegmentGraph";
+            IncreaseSegGraphConfidence(labelled_segments);
+        }
+        else if (inst_association_ == 4)
+        {
+            // LOG(INFO) << "  updateLabelInstanceClassConfidence&SegmentGraph";
+            updateLabelClassInstanceConfidence(labelled_segments);
+            // LOG(INFO) << "  updateLabelInstanceClassConfidence&SegmentGraph";
+            IncreaseSegGraphConfidence(labelled_segments);
+            
+        }
+        else{
+            // original associaiton
+            IncreaseLabelInstanceMapCount(labelled_segments);
+        }
+
+    }
 }
 
 void LabelTsdfConfidenceIntegrator::increasePairwiseConfidenceCountSemantics(
@@ -1033,8 +1064,8 @@ void LabelTsdfConfidenceIntegrator::updateLabelClassInstanceConfidence(
 
     std::set<InstanceLabel> assigned_instances;
 
-    LOG(INFO) << "  labelled_segments.size(): " << labelled_segments->size();
-
+    // LOG(INFO) << "  labelled_segments.size(): " << labelled_segments->size();
+    int segment_idx = 1;
     // Loop through all the segments with labels 
     for (auto segment_it = labelled_segments->begin(); segment_it != labelled_segments->end();++segment_it) 
     {
@@ -1046,7 +1077,6 @@ void LabelTsdfConfidenceIntegrator::updateLabelClassInstanceConfidence(
         }
         else
             continue;
-        
         if ((*segment_it)->instance_label_ != BackgroundLabel) {
 
             SemanticLabel semantic_label = (*segment_it)->semantic_label_;        
@@ -1092,6 +1122,7 @@ void LabelTsdfConfidenceIntegrator::updateLabelClassInstanceConfidence(
             // LOG(INFO) << "      increase Label " << std::setfill('0') << std::setw(5) <<int(label)
             //     << "    semantic " << int(semantic_label) << "; count " << 
             //     semantic_instance_label_fusion_ptr_->label_class_count_.find(label)->second.find(semantic_label)->second;
+
         }
 
     }
@@ -1188,8 +1219,12 @@ bool LabelTsdfConfidenceIntegrator::getNextSegmentLabelPairWithConfidence(
             bool count_greater_than_max = segment_it->second > max_confidence;
             bool count_greater_than_min =
                 segment_it->second > label_tsdf_config_.min_label_voxel_count;
+            bool ratio_greater_than_min =  segment_it->second > 
+                    int(label_tsdf_config_.label_register_min_overlap_ratio * 
+                    segment_it->first->points_C_.size() );
             bool is_unlabelled =
                 labelled_segments.find(segment_it->first) == labelled_segments.end();
+
             if (count_greater_than_max && count_greater_than_min && is_unlabelled) {
                     max_confidence = segment_it->second;
                     max_segment = segment_it->first;
@@ -1237,7 +1272,7 @@ bool LabelTsdfConfidenceIntegrator::mergeLabelConfidence(LLSet* merges_to_publis
       semantic_instance_label_fusion_ptr_->checkLabelInFrameCount();
       SemanticLabel new_label_semantic = semantic_instance_label_fusion_ptr_->getSemanticLabel(new_label) ;
       SemanticLabel old_label_semantic = semantic_instance_label_fusion_ptr_->getSemanticLabel(old_label) ;
-
+      
       LOG(INFO) << "Merging labels " << int(new_label) << " and " << int(old_label);
       LOG(INFO) << "Before merging ";
       LOG(INFO) << "    old labels: semantic- " << int(old_label_semantic) ;
@@ -1285,19 +1320,22 @@ bool LabelTsdfConfidenceIntegrator::mergeLabelConfidence(LLSet* merges_to_publis
 bool LabelTsdfConfidenceIntegrator::getNextMergeConfidence(Label* new_label, Label* old_label) {
     CHECK_NOTNULL(new_label);
     CHECK_NOTNULL(old_label);
+    // LOG(INFO) << "      Superpoint Merge Step2 ";
     for (LLMapIt confidence_map_it = pairwise_confidence_.begin();
         confidence_map_it != pairwise_confidence_.end(); ++confidence_map_it) 
     {
         SemanticLabel new_label_semantic = 
             semantic_instance_label_fusion_ptr_->getSemanticLabel(confidence_map_it->first);
-
+        // LOG(INFO) << "      Pair wise new label " << int(confidence_map_it->first) << " with new sem "
+        //     << int(new_label_semantic);
         for (LMapIt confidence_pair_it = confidence_map_it->second.begin();
             confidence_pair_it != confidence_map_it->second.end();
             ++confidence_pair_it) 
         {
             SemanticLabel old_label_semantic = 
                 semantic_instance_label_fusion_ptr_->getSemanticLabel(confidence_pair_it->first);
-
+            // LOG(INFO) << "      Pair wise old label " << int(confidence_pair_it->first) << " with new sem "
+            //     << int(old_label_semantic);
             bool semantic_consistent = false;
             if(data_association_ == 1) // only consider equal semantics merging
                 semantic_consistent = (new_label_semantic == old_label_semantic);
@@ -1441,8 +1479,503 @@ void LabelTsdfConfidenceIntegrator::cleanStaleLabels() {
     }
     for(Label label:stale_labels)
         semantic_instance_label_fusion_ptr_->label_frames_count_.erase(label);
+}
 
+void LabelTsdfConfidenceIntegrator::raycastPanopticPredictions(
+    const Transformation& T_G_C,
+    const cv::Mat& panoptic_mask, 
+    const std::map<InstanceLabel, SemanticLabel>& inst_sem_map,
+    const cv::Mat& depth_img_scaled,
+    const float& search_length, 
+    const CameraRayGenerator* camera_ray_generaor, 
+    std::map<Label, std::map<InstanceLabel, int>>& labels_instances_cout,
+    float pose_confidence
+    )
+{
+    CHECK_GT(search_length, 0.0);
+    float half_search_length = 0.5*search_length;
 
+    // LOG(INFO) << "  ray cast started on " << int(panoptic_mask.rows) 
+    //     << " * " << int(panoptic_mask.cols) << " with search_len " << search_length;
+
+    cv::Mat rayCastLabelImg(panoptic_mask.size(), CV_8U, cv::Scalar(0));
+
+    labels_instances_cout.clear();
+    int visited_num = 0;
+    std::set<LabelVoxel*> visited_voxels_ptrs;
+    std::map<Label, std::vector<GlobalIndex>> label_pointsIdx_map;
+
+    omp_set_num_threads(config_.integrator_threads);
+    #pragma omp parallel
+    {
+        // thread-wise variables
+        int visited_num_thread = 0;
+        std::set<LabelVoxel*> visited_voxels_ptrs_thread;
+        std::map<Label, std::vector<GlobalIndex>> label_pointsIdx_map_thread;
+        std::map<Label, std::map<InstanceLabel, int>> labels_instances_cout_thread;
+
+        #pragma omp for schedule(dynamic, 6)
+        for(int row_i=0; row_i < panoptic_mask.rows; row_i++)
+        {
+            for(int col_j=0; col_j < panoptic_mask.cols; col_j++)
+            {
+                // for each pixel with predicted instance label, ray cast them
+                // to label voxels and assign frame-wise instance label to superpoint
+                InstanceLabel inst_label = panoptic_mask.at<uint8_t>(row_i, col_j);
+                if( inst_label == BackgroundLabel)
+                    continue;
+
+                // make use of depth value if any
+                cv::Vec3f point_C_start_vec;
+                cv::Vec3f point_C_end_vec;
+                point_C_start_vec = camera_ray_generaor->getRayStart(row_i, col_j);
+                point_C_end_vec = camera_ray_generaor->getRayEnd(row_i, col_j);
+
+                float depth_scaled = depth_img_scaled.at<float>(row_i, col_j);
+
+                if( !std::isfinite(depth_scaled) || 
+                    depth_scaled < camera_ray_generaor->getRangeMin() || 
+                    depth_scaled > camera_ray_generaor->getRangeMax())
+                {
+                    point_C_start_vec = camera_ray_generaor->getRayStart(row_i, col_j);
+                    point_C_end_vec = camera_ray_generaor->getRayEnd(row_i, col_j);
+                }
+                else
+                {
+                    float range_max = std::min( float(depth_scaled + half_search_length), 
+                                            camera_ray_generaor->getRangeMax());
+                    float range_min = std::max( float(depth_scaled - half_search_length), 
+                                            camera_ray_generaor->getRangeMin());
+
+                    point_C_start_vec = camera_ray_generaor->getRayWithDepth(row_i, col_j, range_min);
+                    point_C_end_vec = camera_ray_generaor->getRayWithDepth(row_i, col_j, range_max);
+                }
+                
+                Point point_C_start(point_C_start_vec[0], point_C_start_vec[1],
+                                    point_C_start_vec[2]);
+                Point point_C_end(point_C_end_vec[0], point_C_end_vec[1],
+                                    point_C_end_vec[2]);
+
+                Point point_G_start = T_G_C * point_C_start;
+                Point point_G_end = T_G_C * point_C_end;
+
+                bool clearing_ray = false;
+                bool voxel_carving_enabled = true;
+                FloatingPoint max_ray_length_m = camera_ray_generaor->getRangeMax();
+                RayCaster ray_caster(point_G_start, point_G_end, clearing_ray,
+                        voxel_carving_enabled, max_ray_length_m,
+                        voxel_size_inv_, config_.default_truncation_distance);
+                        
+                GlobalIndex global_voxel_idx;
+                int ray_march_num = 0;
+                while (ray_caster.nextRayIndex(&global_voxel_idx)) {
+
+                    ray_march_num ++;
+                    LabelVoxel* hit_voxel = label_layer_->getVoxelPtrByGlobalIndex(global_voxel_idx);
+                    if(hit_voxel == nullptr)
+                        continue;
+
+                    bool valid_hit = false;
+
+                    std::set<LabelVoxel*>::iterator voxel_ptr_it = visited_voxels_ptrs_thread.find(hit_voxel);
+                    if(voxel_ptr_it == visited_voxels_ptrs_thread.end()) // only count unvisited voxels
+                    {
+                        if(hit_voxel->label_confidence > 0.5)
+                        {
+                            visited_voxels_ptrs_thread.insert(hit_voxel);
+                            // get superpoint label 
+                            Label superpoint_label = BackgroundLabel;
+                            superpoint_label = hit_voxel->label;
+                            if(superpoint_label != BackgroundLabel)
+                            {
+                                // add label-cur_inst count
+                                auto label_it = labels_instances_cout_thread.find(superpoint_label);
+                                if(label_it != labels_instances_cout_thread.end())
+                                {
+                                    auto inst_id_it = label_it->second.find(inst_label);
+                                    if(inst_id_it != label_it->second.end())
+                                        inst_id_it->second += 1;
+                                    else
+                                        label_it->second.emplace(inst_label, 1);
+                                }
+                                else
+                                {
+                                    std::map<InstanceLabel, int> inst_count_map;
+                                    inst_count_map.emplace(inst_label, 1);
+                                    labels_instances_cout_thread.emplace(superpoint_label, inst_count_map);
+                                }
+                                // add label-voxel map
+                                auto label_pointsIdx_it = label_pointsIdx_map_thread.find(superpoint_label);
+                                if(label_pointsIdx_it == label_pointsIdx_map_thread.end())
+                                {
+                                    std::vector<GlobalIndex> pointsIdxs;
+                                    pointsIdxs.emplace_back(global_voxel_idx);
+                                    label_pointsIdx_map_thread.emplace(superpoint_label, pointsIdxs);
+                                }
+                                else
+                                    label_pointsIdx_it->second.emplace_back(global_voxel_idx);
+                            }
+                            valid_hit = true;
+                        }
+                    }  
+                    else
+                        valid_hit = true;
+
+                    if(valid_hit)
+                        break;
+                }
+            }
+        }
+    
+        // aggregate labels_instances_cout_thread to global labels_instances_cout
+        //          and label_pointsIdx_map_thread to global one
+        visited_num_thread = visited_voxels_ptrs_thread.size();
+        #pragma omp critical
+        {
+            // to global labels_instances_cout
+            for(auto label_it = labels_instances_cout_thread.begin();
+                label_it != labels_instances_cout_thread.end(); label_it++ )
+            {
+                for(auto inst_it = label_it->second.begin(); 
+                    inst_it != label_it->second.end(); inst_it++)
+                {
+
+                    auto label_global_it = labels_instances_cout.find(label_it->first);
+                    if(label_global_it != labels_instances_cout.end())
+                    {
+                        auto inst_global_it = label_global_it->second.find(inst_it->first);
+                        if(inst_global_it != label_global_it->second.end())
+                            inst_global_it->second += inst_it->second;
+                        else
+                            label_global_it->second.emplace(inst_it->first, inst_it->second);
+                    }
+                    else
+                    {
+                        std::map<InstanceLabel, int> inst_count_map;
+                        inst_count_map.emplace(inst_it->first, inst_it->second);
+                        labels_instances_cout.emplace(label_it->first, inst_count_map);
+                    }
+
+                }
+            }
+            visited_num += visited_num_thread;
+            for(auto voxel_ptr_:visited_voxels_ptrs_thread)
+                visited_voxels_ptrs.insert(voxel_ptr_);
+
+            // to global label_pointsIdx_map_thread
+            for(auto label_it = label_pointsIdx_map_thread.begin();
+                label_it != label_pointsIdx_map_thread.end(); label_it++ )
+            {
+                auto global_label_it = label_pointsIdx_map.find(label_it->first);
+                if( global_label_it == label_pointsIdx_map.end())
+                    label_pointsIdx_map.emplace(label_it->first, label_it->second);
+                else
+                {
+                    global_label_it->second.insert( global_label_it->second.end(),
+                        label_it->second.begin(), label_it->second.end() );
+                }
+            }
+        }
+    }
+
+    
+    // LOG(INFO) << "      total hit " << int(visited_voxels_ptrs.size()) << " voxels";
+    // LOG(INFO) << "      sum of thread hit " << int(visited_num) << " voxels";
+    // cv::imwrite("/home/yang/toolbox/test_field/volumetric-semantically-consistent-3D-panoptic-mapping/scripts/test/rayCaster/ray_cast_label.png", rayCastLabelImg);
+    // LOG(INFO) <<  "     Ray cast result: ";
+    // assign current inst label for each superpoint observation
+    std::map<InstanceLabel, std::map<Label, int>> instances_labels_cout;
+    int th_num_voxels = 20;
+    for(auto label_it = labels_instances_cout.begin(); 
+        label_it != labels_instances_cout.end(); label_it++)
+    {
+        InstanceLabel max_cur_inst = BackgroundLabel;
+        int max_cur_inst_count = 0;
+        
+        for(auto cur_inst_count_it = label_it->second.begin();
+            cur_inst_count_it != label_it->second.end(); cur_inst_count_it++)
+        {
+            // LOG(INFO)<< "    Label:" << int(label_it->first)  
+            // << " Inst:" << int(cur_inst_count_it->first) 
+            // << " Count:" << int(cur_inst_count_it->second);
+            if(cur_inst_count_it->second > th_num_voxels && 
+                cur_inst_count_it->second > max_cur_inst_count)
+            {
+                max_cur_inst = cur_inst_count_it->first;
+                max_cur_inst_count = cur_inst_count_it->second;
+            }
+        }
+        if(max_cur_inst != BackgroundLabel)
+        {
+            instances_labels_cout[max_cur_inst].emplace(label_it->first, max_cur_inst_count);
+        }
+    }
+
+    // determine current-global inst association 
+    std::set<InstanceLabel> assigned_instances;
+    for(auto inst_it = instances_labels_cout.begin(); 
+            inst_it != instances_labels_cout.end(); inst_it++)
+    {
+        // get semantic information
+        auto sem_it = inst_sem_map.find(inst_it->first);
+        if( sem_it == inst_sem_map.end() ||
+            sem_it->first == BackgroundSemLabel)
+            continue;
+        SemanticLabel semantic_label = sem_it->second;
+
+        // determine current-global inst association 
+        std::map<InstanceLabel, int> global_inst_count;
+        for(auto label_it = inst_it->second.begin(); 
+            label_it != inst_it->second.end(); label_it++)
+        {
+            // account voting for each associated global inst
+            InstanceLabel label_associated_inst = semantic_instance_label_fusion_ptr_->
+                getInstanceLabelWithSemantic(label_it->first, semantic_label, assigned_instances);
+            if(label_associated_inst != BackgroundLabel)
+            {
+                auto global_inst_it = global_inst_count.find(label_associated_inst);
+                if(global_inst_it != global_inst_count.end())
+                {
+                    global_inst_it->second += label_it->second;
+                }
+                else    
+                    global_inst_count.emplace(label_associated_inst, label_it->second);
+            }
+        }
+        int max_global_inst_count = 0;
+        InstanceLabel max_global_inst = BackgroundLabel;
+        for(auto global_inst_it = global_inst_count.begin(); 
+            global_inst_it != global_inst_count.end(); global_inst_it++)
+        {
+            if(global_inst_it->second > th_num_voxels && 
+                global_inst_it->second > max_global_inst_count &&
+                assigned_instances.find(global_inst_it->first) == assigned_instances.end())
+            {
+                max_global_inst_count = global_inst_it->second;
+                max_global_inst = global_inst_it->first;
+            }
+        }
+        if(max_global_inst == BackgroundLabel)
+            max_global_inst = getFreshInstance();
+
+        // update semantic and instance count
+        // SegmentObserveConfidence update_weight = 1.0;
+        // LOG(INFO) << "      Weighting by pose confidence " << pose_confidence << std::endl;
+        for(auto label_it = inst_it->second.begin(); 
+            label_it != inst_it->second.end(); label_it++)
+        {
+            // LOG(INFO) << "  Adding Label " << int(label_it->first) << "; Sem " << int(semantic_label)
+            //     << "; Inst " << int(max_global_inst) <<  " with weight " << max_global_inst_count;
+            SegmentObserveConfidence update_weight = label_it->second;
+            CHECK_GT(pose_confidence, 0.0-1e-3);
+            CHECK_LT(pose_confidence, 4.0+1e-3);
+            update_weight *= pose_confidence;
+            if(update_weight > 1e-2)
+            {
+                semantic_instance_label_fusion_ptr_->increaseLabelClassInstanceConfidence(
+                    label_it->first, semantic_label, max_global_inst, update_weight);
+                semantic_instance_label_fusion_ptr_->increaseLabelClassConfidence(
+                    label_it->first, semantic_label, update_weight);
+                semantic_instance_label_fusion_ptr_->increaseLabelFramesCount(label_it->first);
+                // update superpoint-graph information
+                semantic_instance_label_fusion_ptr_->increaseSegGraphConfidence(
+                    label_it->first, semantic_label, label_it->first, update_weight);
+            }
+
+        }
+        assigned_instances.insert(max_global_inst);
+
+        if(semantics_metadata_ptr_->isThing(semantic_label))
+        {
+            // form bounding box point cloud for each observed superpoint
+            float sample_dist = 0.01f;
+            std::map<Label, pcl::PointCloud<pcl::PointXYZ>::Ptr > label_bbox_map;
+            // std::map<Label, pcl::PointCloud<pcl::PointXYZ>::Ptr > label_pcl_map;
+            // #pragma omp parallel for
+            for(auto label_it = inst_it->second.begin(); 
+                label_it != inst_it->second.end(); label_it++)
+            {
+                auto label_pointsIdx_it = label_pointsIdx_map.find(label_it->first);
+                if(label_pointsIdx_it == label_pointsIdx_map.end())
+                    continue;
+                pcl::PointCloud<pcl::PointXYZ>::Ptr pcl_ptr (new pcl::PointCloud<pcl::PointXYZ>);
+                for(GlobalIndex point_idx:label_pointsIdx_it->second)
+                {   // add hit points to poiintcloud
+                    pcl_ptr->emplace_back(
+                        point_idx[0] * voxel_size_,
+                        point_idx[1] * voxel_size_,
+                        point_idx[2] * voxel_size_);
+                }
+                // down sample point cloud
+                pcl::VoxelGrid<pcl::PointXYZ> down_sampler;
+                down_sampler.setInputCloud (pcl_ptr);
+                down_sampler.setLeafSize (0.02f, 0.02f, 0.02f);
+                down_sampler.filter (*pcl_ptr);
+                // filter point cloud
+                pcl::StatisticalOutlierRemoval<pcl::PointXYZ> outlier_filter;
+                outlier_filter.setInputCloud (pcl_ptr);
+                outlier_filter.setMeanK (10);
+                outlier_filter.setStddevMulThresh(2.0);
+                outlier_filter.filter (*pcl_ptr);
+                // add point cloud to the label map
+                std::list<std::pair<int, int>> sample_pairs;
+                sample_pairs.emplace_back(1, 2); sample_pairs.emplace_back(2, 3);
+                sample_pairs.emplace_back(3, 4); sample_pairs.emplace_back(1, 4);
+                sample_pairs.emplace_back(1, 5); sample_pairs.emplace_back(2, 6);
+                sample_pairs.emplace_back(3, 7); sample_pairs.emplace_back(4, 8);
+                sample_pairs.emplace_back(5, 6); sample_pairs.emplace_back(6, 7);
+                sample_pairs.emplace_back(7, 8); sample_pairs.emplace_back(5, 8);
+                if(pcl_ptr->size() > 10)
+                {
+                    // calculate bounding box
+                    pcl::MomentOfInertiaEstimation <pcl::PointXYZ> feature_extractor;
+                    feature_extractor.setInputCloud (pcl_ptr);
+                    feature_extractor.compute();
+                    pcl::PointXYZ min_point_OBB;
+                    pcl::PointXYZ max_point_OBB;
+                    pcl::PointXYZ position_OBB;
+                    Eigen::Matrix3f rotational_matrix_OBB;
+                    feature_extractor.getOBB (min_point_OBB, max_point_OBB, position_OBB, rotational_matrix_OBB);
+
+                    // build bounding box samples
+                    pcl::PointCloud<pcl::PointXYZ>::Ptr pcl_bbox_ptr(new pcl::PointCloud<pcl::PointXYZ>);
+                    pcl_bbox_ptr->emplace_back( 0.5*(max_point_OBB.x+min_point_OBB.x),
+                        0.5*(max_point_OBB.y+min_point_OBB.y),
+                        0.5*(max_point_OBB.z+min_point_OBB.z) ); // box center
+                    pcl_bbox_ptr->emplace_back(max_point_OBB.x,max_point_OBB.y,max_point_OBB.z); // v1
+                    pcl_bbox_ptr->emplace_back(min_point_OBB.x,max_point_OBB.y,max_point_OBB.z); // v2
+                    pcl_bbox_ptr->emplace_back(min_point_OBB.x,max_point_OBB.y,min_point_OBB.z); // v3
+                    pcl_bbox_ptr->emplace_back(max_point_OBB.x,max_point_OBB.y,min_point_OBB.z); // v4
+                    pcl_bbox_ptr->emplace_back(max_point_OBB.x,min_point_OBB.y,max_point_OBB.z); // v5
+                    pcl_bbox_ptr->emplace_back(min_point_OBB.x,min_point_OBB.y,max_point_OBB.z); // v6
+                    pcl_bbox_ptr->emplace_back(min_point_OBB.x,min_point_OBB.y,min_point_OBB.z); // v7
+                    pcl_bbox_ptr->emplace_back(max_point_OBB.x,min_point_OBB.y,min_point_OBB.z); // v8
+
+                    // sample along edges of bbox
+                    for(std::pair<int, int>& sample_pair: sample_pairs)
+                    {
+                        pcl::PointXYZ point1 = pcl_bbox_ptr->points[sample_pair.first];
+                        pcl::PointXYZ point2 = pcl_bbox_ptr->points[sample_pair.second];
+                        pcl::PointXYZ point_diff;
+                        point_diff.getArray3fMap() = point1.getArray3fMap() - point2.getArray3fMap();
+                        int num_samples = std::sqrt(point_diff.x*point_diff.x+
+                            point_diff.y*point_diff.y+point_diff.z*point_diff.z)/sample_dist;
+                        for(int sample_i=0; sample_i<num_samples; sample_i++)
+                        {
+                            float lambda = sample_i*1.0/float(num_samples);
+                            pcl::PointXYZ point_sample;
+                            point_sample.getArray3fMap() = lambda*point2.getArray3fMap() + (1-lambda)*point1.getArray3fMap();
+                            pcl_bbox_ptr->emplace_back(point_sample);
+                        }
+                    }
+                    // transform bbox to global coordinates
+                    Eigen::Matrix4f T_W_box = Eigen::Matrix4f::Identity();
+                    T_W_box.block<3,3>(0,0) = rotational_matrix_OBB;
+                    T_W_box(0,3) = position_OBB.x;
+                    T_W_box(1,3) = position_OBB.y;
+                    T_W_box(2,3) = position_OBB.z;
+                    pcl::transformPointCloud (*pcl_bbox_ptr, *pcl_bbox_ptr, T_W_box);  
+                    label_bbox_map.emplace(label_it->first, pcl_bbox_ptr);
+                    // label_pcl_map.emplace(label_it->first, pcl_ptr);
+                }
+            }
+
+            // calculate spatial confidence
+            for(auto label_it = label_bbox_map.begin(); label_it!= label_bbox_map.end(); 
+                label_it++)
+            {
+                pcl::PointCloud<pcl::PointXYZ>::Ptr pcl_bbox1_ptr = label_it->second;
+                for(auto neight_label_it = std::next(label_it); 
+                    neight_label_it!= label_bbox_map.end(); neight_label_it++)
+                {
+                    pcl::PointCloud<pcl::PointXYZ>::Ptr pcl_bbox2_ptr = neight_label_it->second;
+                    SegSegConfidence spatial_confidence = calculateSpatialConfidence(pcl_bbox1_ptr,
+                        pcl_bbox2_ptr);
+
+                    SegmentObserveConfidence update_weight = spatial_confidence * std::min(
+                        inst_it->second.find(label_it->first)->second, 
+                        inst_it->second.find(neight_label_it->first)->second);
+
+                    // LOG(INFO) << "  Spatial Confidence Between " << int(label_it->first) << " and " 
+                        // << int(neight_label_it->first) << " : " <<  spatial_confidence;
+                    update_weight *= pose_confidence;
+                    if(update_weight > 1e-2)
+                    {
+                        semantic_instance_label_fusion_ptr_->increaseSegGraphConfidence(
+                            label_it->first, semantic_label, neight_label_it->first, update_weight);
+                        semantic_instance_label_fusion_ptr_->increaseSegGraphConfidence(
+                            neight_label_it->first, semantic_label, label_it->first, update_weight);
+                    }
+
+                }
+
+            }
+        }
+        
+    }
+
+    // // visualize
+    // using namespace std::chrono_literals;
+
+    // pcl::visualization::PCLVisualizer::Ptr viewer (new pcl::visualization::PCLVisualizer ("3D Viewer"));
+    // viewer->setBackgroundColor (0, 0, 0);
+    // viewer->addCoordinateSystem (1.0);
+    // viewer->initCameraParameters ();
+    // for(auto label_it = label_bbox_map.begin(); label_it!= label_bbox_map.end(); 
+    //         label_it++)
+    // {
+    //     viewer->addPointCloud<pcl::PointXYZ>(label_it->second, std::to_string(label_it->first));
+    // }
+    // for(auto label_it = label_pcl_map.begin(); label_it!= label_pcl_map.end(); 
+    //         label_it++)
+    // {
+    //     viewer->addPointCloud<pcl::PointXYZ>(label_it->second, std::to_string(label_it->first)+"_pcl");
+    // }
+    // while(!viewer->wasStopped())
+    // {
+    //     viewer->spinOnce (100);
+    //     std::this_thread::sleep_for(100ms);
+    // }
+
+}
+
+SegSegConfidence LabelTsdfConfidenceIntegrator::calculateSpatialConfidence(
+    pcl::PointCloud<pcl::PointXYZ>::Ptr pcl_1,
+    pcl::PointCloud<pcl::PointXYZ>::Ptr pcl_2,
+    float th_neighbor, float th_cut_off)
+{
+    float th_neighbor_sq = th_neighbor*th_neighbor;
+    float th_cut_off_sq = th_cut_off*th_cut_off;
+    float mini_distance_sq = 10000.0f;
+    for(int p1_idx = 0; p1_idx < pcl_1->size(); p1_idx++)
+    {
+        pcl::PointXYZ p1 = pcl_1->points[p1_idx];
+        for(int p2_idx = 0; p2_idx < pcl_2->size(); p2_idx++)
+        {
+            pcl::PointXYZ p2 = pcl_2->points[p2_idx];
+            pcl::PointXYZ point_diff;
+            point_diff.getArray3fMap() = p1.getArray3fMap() - p2.getArray3fMap();
+            float dist_sq = point_diff.x*point_diff.x+point_diff.y*point_diff.y+point_diff.z*point_diff.z;
+            // LOG(INFO) << "      dist_sq: " << dist_sq;
+            if(dist_sq < th_neighbor_sq)
+                return 1.0;
+            // else if(dist_sq > th_cut_off_sq)
+            //     return 0.0;
+
+            if(dist_sq < mini_distance_sq)
+                mini_distance_sq = dist_sq;
+        }
+    }
+
+    if(mini_distance_sq <= th_neighbor_sq)
+        return 1.0;
+    else if(mini_distance_sq > th_cut_off_sq)
+        return 0.0;
+    else
+    {
+        return th_neighbor_sq*th_cut_off_sq/((th_cut_off_sq-th_neighbor_sq)*mini_distance_sq) - 
+            th_neighbor_sq/(th_cut_off_sq-th_neighbor_sq);
+    }
 }
 
 }

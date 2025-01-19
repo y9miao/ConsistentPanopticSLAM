@@ -2,10 +2,26 @@
 #define LABEL_TSDF_CONFIDENCE_INTEGRATOR_H_
 
 #include <global_segment_map/label_tsdf_integrator.h>
-#include <global_segment_map_py/segment_confidence.h>
+#include <consistent_mapping/segment_confidence.h>
+#include <utils/camera_ray_generator.h>
+#include "utils/semantics_metadata.h"
 #include <opencv2/core.hpp>
 #include <opencv2/highgui.hpp>
 #include <math.h>
+
+#include <omp.h>
+
+#include <pcl/point_types.h>
+#include <pcl/impl/point_types.hpp>
+#include <pcl/features/moment_of_inertia_estimation.h>
+#include <pcl/io/pcd_io.h>
+#include <pcl/visualization/cloud_viewer.h>
+#include <pcl/filters/voxel_grid.h>
+#include <pcl/filters/statistical_outlier_removal.h>
+#include <pcl/common/transforms.h>
+#include <pcl/visualization/cloud_viewer.h>
+#include <thread>
+
 namespace voxblox {
 
 class LabelTsdfConfidenceIntegrator : public LabelTsdfIntegrator{
@@ -114,6 +130,9 @@ public:
         std::map<Label, std::map<Segment*, SegSegConfidence>>* candidates_confidence,
         std::map<Segment*, std::vector<Label>>* segment_merge_candidates);
 
+    void updateInstanceConfidence(
+        std::set<Segment*, SegmentConfidence::PtrCompare>* labelled_segments);
+
     bool getNextSegmentLabelPairWithConfidence(
         std::set<Segment*, SegmentConfidence::PtrCompare>& labelled_segments,
         std::set<Label>* assigned_labels,
@@ -123,7 +142,6 @@ public:
         SegSegConfidence* pair_confidence);
 
     void increasePairwiseConfidenceCountSemantics( const std::vector<Label>& merge_candidates ); 
-
 
     void IncreaseLabelInstanceMapCount(
         std::set<Segment*, SegmentConfidence::PtrCompare>* labelled_segments);
@@ -145,6 +163,28 @@ public:
 
     void cleanStaleLabels();
 
+    // directly ray cast panoptic prediction into voxels 
+    void raycastPanopticPredictions(
+        const Transformation& T_G_C,
+        const cv::Mat& panoptic_mask, 
+        const std::map<InstanceLabel, SemanticLabel>& inst_sem_map,
+        const cv::Mat& depth_img_scaled,
+        const float& search_length, 
+        const CameraRayGenerator* camera_ray_generaor, 
+        std::map<Label, std::map<InstanceLabel, int>>& labels_instances_cout,
+        float pose_confidence = 1.0
+        );
+
+    SegSegConfidence calculateSpatialConfidence(
+        pcl::PointCloud<pcl::PointXYZ>::Ptr pcl_1,
+        pcl::PointCloud<pcl::PointXYZ>::Ptr pcl_2,
+        float th_neighbor = 0.05, float th_cut_off = 0.3);
+
+    void InitMetaSemantics(std::string task = "Nyu40")
+    { semantics_metadata_ptr_ = std::make_shared<MetaSemantics>(task);}
+
+    
+    std::shared_ptr<MetaSemantics> semantics_metadata_ptr_;
     bool use_geo_confidence_ = false;
     bool use_label_confidence_ = false;
     int inst_association_ = 0;

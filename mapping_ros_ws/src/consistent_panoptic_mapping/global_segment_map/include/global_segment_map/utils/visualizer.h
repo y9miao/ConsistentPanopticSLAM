@@ -13,7 +13,8 @@ class Visualizer {
   Visualizer(const std::vector<std::shared_ptr<MeshLayer>>& mesh_layers,
              bool* mesh_layer_updated, std::mutex* mesh_layer_mutex_ptr,
              std::vector<double> camera_position,
-             std::vector<double> clip_distances, bool save_visualizer_frames);
+             std::vector<double> clip_distances, bool save_visualizer_frames,
+             std::string save_folder = "~/");
 
   void visualizeMesh();
 
@@ -28,6 +29,7 @@ class Visualizer {
   std::vector<double> clip_distances_;
 
   bool save_visualizer_frames_;
+  std::string save_folder_;
 };
 }  // namespace voxblox
 

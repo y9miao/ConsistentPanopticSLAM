@@ -331,8 +331,13 @@ void DepthSegmenter::computeDepthDiscontinuityMap(
   cv::Mat max_image(image_size, CV_32FC1);
   cv::max(dilate_image, erode_image, max_image);
 
+  cv::Mat depth_without_nans_pow(image_size, CV_32FC1);
+  cv::pow(depth_without_nans,
+          params_.depth_discontinuity.depth_pow,
+          depth_without_nans_pow);
+
   cv::Mat ratio_image(image_size, CV_32FC1);
-  cv::divide(max_image, depth_without_nans, ratio_image);
+  cv::divide(max_image, depth_without_nans_pow, ratio_image);
 
   cv::threshold(ratio_image, *depth_discontinuity_map,
                 params_.depth_discontinuity.discontinuity_ratio, kMaxValue,
@@ -523,9 +528,9 @@ void DepthSegmenter::computeMinConvexityMap(const cv::Mat& depth_map,
     // TODO(ff): Check if params_.min_convexity.mask_threshold should be
     // mid-point distance dependent.
     // maybe do something like:
-    // std::vector<cv::Mat> depth_map_channels(3);
-    // cv::split(depth_map, depth_map_channels);
-    // vector_projection = vector_projection.mul(depth_map_channels[2]);
+    std::vector<cv::Mat> depth_map_channels(3);
+    cv::split(depth_map, depth_map_channels);
+    vector_projection = vector_projection.mul(depth_map_channels[2]);
 
     cv::Mat concavity_mask(depth_map.size(), CV_32FC1);
     cv::Mat convexity_mask(depth_map.size(), CV_32FC1);
@@ -570,6 +575,27 @@ void DepthSegmenter::computeMinConvexityMap(const cv::Mat& depth_map,
 
   if (params_.min_convexity.use_threshold) {
     constexpr float kMaxBinaryValue = 1.0f;
+
+    // cv::Mat depth_image_truncated; cv::extractChannel(depth_map, depth_image_truncated, 2);
+    // cv::Mat depth_image_truncated_mask = ( 
+    //           depth_image_truncated < params_.min_convexity.th_depth); 
+    
+    // cv::Mat depth_image_pow; 
+    // cv::pow(depth_image_truncated, params_.min_convexity.th_depth_pow, depth_image_pow);
+
+    // cv::Mat th_depth_adaptive = cv::Mat(depth_map.size(), CV_32FC1, cv::Scalar(
+    //   params_.min_convexity.threshold) );
+    // cv::divide(th_depth_adaptive, depth_image_pow, th_depth_adaptive);
+    // th_depth_adaptive.setTo(params_.min_convexity.threshold, depth_image_truncated_mask);
+
+    // cv::Mat mask_valid = (*min_convexity_map) > th_depth_adaptive;
+    // cv::Mat mask_invalid = 255 - mask_valid;
+    // min_convexity_map->setTo(kMaxBinaryValue, mask_valid);
+    // min_convexity_map->setTo(0.0, mask_invalid);
+    // cv::imwrite("/home/yang/toolbox/test_field/volumetric-semantically-consistent-3D-panoptic-mapping/scripts/test/inspectDepthSegmentation/depth_image_depthmap.tiff"
+    //   , depth_image_truncated);
+    // cv::imwrite("/home/yang/toolbox/test_field/volumetric-semantically-consistent-3D-panoptic-mapping/scripts/test/inspectDepthSegmentation/min_convexity_threshold.tiff"
+    //   , th_depth_adaptive);
     cv::threshold(*min_convexity_map, *min_convexity_map,
                   params_.min_convexity.threshold, kMaxBinaryValue,
                   cv::THRESH_BINARY);
