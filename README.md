@@ -66,7 +66,7 @@ Apart from 2D-3D semantic mapping, this project also explores semantic-aided loc
 The code of the semantic-aided localization has been released!
 
 ### TODO
-- ~~Update the code of semantic-aided localization~~
+- ~~Update the code of semantic-aided localization~~   
 - Update the demo of semantic-aided localization
 <!-- - Integrate the graph-based optimization part into online mapping pipeline -->
 
