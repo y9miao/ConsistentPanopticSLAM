@@ -8,7 +8,7 @@ logTest=$6
 step=$7
 
 export PYTHONPATH=${PYTHONPATH}:mapping_ros_ws/devel/lib
-cd /home/yang/toolbox/test_field/volumetric-semantically-consistent-3D-panoptic-mapping
+cd /home/yang/toolbox_ETH/ICRA2024/volumetric-semantically-consistent-3D-panoptic-mapping
 
 python scripts/panoptic_mapping_.py \
 --dataset scannet_nyu \

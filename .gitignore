@@ -25,3 +25,6 @@
 # checkpoints 
 **/checkpoints
 
+#vscode 
+**/.vscode
+

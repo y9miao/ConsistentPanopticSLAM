@@ -1,0 +1,33 @@
+# %YAML:1.0
+File.version: "1.0"
+
+# semantic-instance mapping options 
+SemanticMapping.task: "CoCoPano"
+SemanticMapping.use_geo_confidence: false
+SemanticMapping.use_label_confidence: false
+SemanticMapping.inst_association: 4
+SemanticMapping.data_association: 2
+SemanticMapping.enable_semantic_instance_segmentation: true
+SemanticMapping.use_label_propagation: true
+SemanticMapping.debug: false
+SemanticMapping.seg_graph_confidence: 3
+SemanticMapping.use_inst_label_connect: true
+SemanticMapping.connection_ratio_th: 0.2
+
+# mapping options
+Mapping.num_threads: 7
+Mapping.voxel_size: 0.02
+Mapping.voxels_per_side: 8
+Mapping.voxel_carving_enabled: false
+Mapping.allow_clear: true
+Mapping.truncation_distance_factor: 5.0
+Mapping.max_ray_length_m: 6.0
+Mapping.min_ray_length_m: 0.2
+Mapping.enable_anti_grazing: false
+Mapping.merging_min_overlap_ratio: 0.15
+Mapping.merging_min_frame_count: 2
+Mapping.enable_semantic_instance_segmentation: true
+
+# results
+Result.folder: "/home/yang/990Pro/scannet_seqs/semantic_orbslam/test"
+Result.save_meshes: false

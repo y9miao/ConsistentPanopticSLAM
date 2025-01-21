@@ -1,0 +1,31 @@
+<?xml version="0.0.1"?>
+<package format="2">
+  <name>orbslam_semantic</name>
+  <version>0.0.1</version>
+  <description>A package for orbslam with semantic aid.</description>
+
+  <maintainer email="yangmiao@student.ethz.ch">Yang Miao</maintainer>
+
+  <license>BSD 3</license>
+
+  <buildtool_depend>catkin</buildtool_depend>
+  <buildtool_depend>catkin_simple</buildtool_depend>
+
+  <depend>global_segment_map</depend>
+  <depend>gsm_node</depend>
+  <depend>opencv3_catkin</depend>
+  <depend>gflags_catkin</depend>
+  <depend>glog_catkin</depend>
+  <depend>minkindr_conversions</depend>
+  <depend>pcl_catkin</depend>
+  <depend>pcl_conversions</depend>
+  <depend>sensor_msgs</depend>
+  <depend>std_msgs</depend>
+  <depend>voxblox</depend>
+  <depend>voxblox_ros</depend>
+  <depend>eigen_catkin</depend>
+  <depend>eigen_checks</depend>
+  <depend>consistent_gsm</depend>
+
+  <!-- <depend>pybind11_catkin</depend> -->
+</package>

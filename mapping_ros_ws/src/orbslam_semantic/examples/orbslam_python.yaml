@@ -1,0 +1,39 @@
+# %YAML:1.0
+File.version: "1.0"
+Camera.type: "PinHole"
+Camera1.fx: 577.870605
+Camera1.fy: 577.870605
+Camera1.cx: 320.0
+Camera1.cy: 240.0
+Camera1.k1: 0.0
+Camera1.k2: -0.0
+Camera1.p1: -0.0
+Camera1.p2: 0.0
+Camera1.k3: 0.0
+Camera.width: 640
+Camera.height: 480
+Camera.fps: 15
+Camera.RGB: 1
+Stereo.ThDepth: 55.0
+Stereo.b: 0.07732
+RGBD.DepthMapFactor: 1000.0
+ORBextractor.nFeatures: 2000
+ORBextractor.scaleFactor: 1.2
+ORBextractor.nLevels: 8
+ORBextractor.iniThFAST: 20
+ORBextractor.minThFAST: 7
+Viewer.KeyFrameSize: 0.05
+Viewer.KeyFrameLineWidth: 1.0
+Viewer.GraphLineWidth: 0.9
+Viewer.PointSize: 2.0
+Viewer.CameraSize: 0.08
+Viewer.CameraLineWidth: 3.0
+Viewer.ViewpointX: 0.0
+Viewer.ViewpointY: -0.7
+Viewer.ViewpointZ: -1.8
+Viewer.ViewpointF: 500.0
+
+# 0 for original orbslam
+# 1 for feature-feature filter with semantics
+# 2 for feature-feature filter with superpoint id
+Tracking.mode: 2
